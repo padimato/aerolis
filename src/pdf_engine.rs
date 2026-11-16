@@ -52,9 +52,9 @@ pub struct PasswordRequired {
 impl std::fmt::Display for PasswordRequired {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.wrong_password {
-            write!(f, "mot de passe incorrect")
+            write!(f, "{}", crate::i18n::tr("mot de passe incorrect", "wrong password"))
         } else {
-            write!(f, "ce document est protégé par un mot de passe")
+            write!(f, "{}", crate::i18n::tr("ce document est protégé par un mot de passe", "this document is protected by a password"))
         }
     }
 }
@@ -461,23 +461,23 @@ impl RawDocument<'_> {
 fn open_error_message(path: &Path, error: &PdfiumError) -> String {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
     if !path.exists() {
-        return format!("« {name} » est introuvable : il a peut-être été déplacé ou supprimé.");
+        return crate::trf!("« {name} » est introuvable : il a peut-être été déplacé ou supprimé.", "“{name}” cannot be found: it may have been moved or deleted.");
     }
     match error {
         PdfiumError::IoError(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            format!("Vous n'avez pas le droit d'ouvrir « {name} ».")
+            crate::trf!("Vous n'avez pas le droit d'ouvrir « {name} ».", "You are not allowed to open “{name}”.")
         }
-        PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FileError) | PdfiumError::IoError(_) => format!(
+        PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FileError) | PdfiumError::IoError(_) => crate::trf!(
             "Impossible de lire « {name} » : il est peut-être utilisé par une autre application, \
-             ou vous n'avez pas le droit de l'ouvrir."
+             ou vous n'avez pas le droit de l'ouvrir.", "Cannot read “{name}”: it may be in use by another application, or you are not allowed to open it."
         ),
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FormatError) => {
-            format!("« {name} » n'est pas un PDF valide, ou il est endommagé.")
+            crate::trf!("« {name} » n'est pas un PDF valide, ou il est endommagé.", "“{name}” is not a valid PDF, or it is damaged.")
         }
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::SecurityError) => {
-            format!("« {name} » est protégé d'une façon que Kite PDF ne sait pas ouvrir.")
+            crate::trf!("« {name} » est protégé d'une façon que Kite PDF ne sait pas ouvrir.", "“{name}” is protected in a way Kite PDF cannot open.")
         }
-        _ => format!("Impossible d'ouvrir « {name} »."),
+        _ => crate::trf!("Impossible d'ouvrir « {name} ».", "Cannot open “{name}”."),
     }
 }
 
@@ -889,6 +889,18 @@ impl<'a> LoadedPdfDocument<'a> {
         let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         let page = self.doc.pages().get(page_index as u16).ok()?;
         Some(page_details(&page, self.declares_form || self.doc.form().is_some()))
+    }
+
+    /// Texte brut d'une page, sans positions (assistant IA) : un seul appel à PDFium, bien plus rapide
+    /// que [`Self::extract_single_page_text_layer`].
+    pub fn extract_page_plain_text(&self, page_idx: usize) -> String {
+        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        self.doc
+            .pages()
+            .get(page_idx as u16)
+            .ok()
+            .and_then(|page| page.text().ok().map(|text| text.all()))
+            .unwrap_or_default()
     }
 
     /// Extrait la couche de texte natif d'une seule page à la volée (< 1 ms, idéal pour les très gros PDF).

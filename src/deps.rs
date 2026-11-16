@@ -54,9 +54,9 @@ pub struct UntestedVersion {
 
 impl UntestedVersion {
     pub fn warning(&self) -> String {
-        format!(
+        crate::trf!(
             "{} : la version installée n'est pas celle testée avec Kite PDF ({}). Si quelque \
-             chose ne fonctionne pas, installez la version testée : {} (fichier concerné : {})",
+             chose ne fonctionne pas, installez la version testée : {} (fichier concerné : {})", "{}: the installed version is not the one tested with Kite PDF ({}). If something does not work, install the tested version: {} (file concerned: {})",
             self.dependency.name,
             self.dependency.version,
             self.dependency.url,
@@ -162,7 +162,7 @@ pub fn install(
     let destination = root.join(&dep.destination);
     if let Some(dir) = destination.parent() {
         std::fs::create_dir_all(dir)
-            .with_context(|| format!("Impossible de créer {}", dir.display()))?;
+            .with_context(|| crate::trf!("Impossible de créer {}", "Cannot create {}", dir.display()))?;
     }
     let download = destination.with_extension("download");
     let staged = destination.with_extension("part");
@@ -174,7 +174,7 @@ pub fn install(
         }
         let found_sha256 = sha256_file(&staged)?;
         std::fs::rename(&staged, &destination).with_context(|| {
-            format!("Impossible d'installer {} (fichier utilisé ?)", destination.display())
+            crate::trf!("Impossible d'installer {} (fichier utilisé ?)", "Cannot install {} (file in use?)", destination.display())
         })?;
         Ok(if found_sha256.eq_ignore_ascii_case(&dep.sha256) {
             Installed::TestedVersion
@@ -188,15 +188,15 @@ pub fn install(
     })();
     let _ = std::fs::remove_file(&download);
     let _ = std::fs::remove_file(&staged);
-    result.with_context(|| format!("{} : échec de l'installation depuis {}", dep.name, dep.url))
+    result.with_context(|| crate::trf!("{} : échec de l'installation depuis {}", "{}: installation from {} failed", dep.name, dep.url))
 }
 
-fn fetch(url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<()> {
+pub(crate) fn fetch(url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<()> {
     let agent = ureq::AgentBuilder::new()
         .try_proxy_from_env(true)
         .user_agent(concat!("kite-pdf/", env!("CARGO_PKG_VERSION")))
         .build();
-    let response = agent.get(url).call().context("téléchargement impossible")?;
+    let response = agent.get(url).call().context(crate::i18n::tr("téléchargement impossible", "download failed"))?;
     let total = response
         .header("Content-Length")
         .and_then(|v| v.parse::<u64>().ok());
@@ -216,13 +216,13 @@ fn fetch(url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Re
     file.flush()?;
     if let Some(total) = total {
         if received != total {
-            bail!("téléchargement interrompu ({received} octets sur {total})");
+            bail!("{}", crate::trf!("téléchargement interrompu ({received} octets sur {total})", "download interrupted ({received} bytes of {total})"));
         }
     }
     Ok(())
 }
 
-fn extract_member(archive: &Path, url: &str, member: &str, to: &Path) -> Result<()> {
+pub(crate) fn extract_member(archive: &Path, url: &str, member: &str, to: &Path) -> Result<()> {
     let mut out = std::fs::File::create(to)?;
     if url.ends_with(".zip") {
         let mut zip = zip::ZipArchive::new(std::fs::File::open(archive)?)?;

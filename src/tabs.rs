@@ -48,14 +48,14 @@ impl ActiveTool {
 
     pub fn icon_and_label(&self) -> (&'static str, &'static str, &'static str) {
         match self {
-            ActiveTool::Select => ("↖", "Sélection", "V"),
-            ActiveTool::Pan => ("✋", "Main / Pan", "Espace"),
-            ActiveTool::Highlight => ("✒", "Surligner", "H"),
+            ActiveTool::Select => ("↖", crate::i18n::tr("Sélection", "Select"), "V"),
+            ActiveTool::Pan => ("✋", crate::i18n::tr("Main / Pan", "Hand / Pan"), crate::i18n::tr("Espace", "Space")),
+            ActiveTool::Highlight => ("✒", crate::i18n::tr("Surligner", "Highlight"), "H"),
             ActiveTool::FreeText => ("🅰", "Texte", "T"),
-            ActiveTool::Ink => ("✏", "Dessin", "D"),
-            ActiveTool::Shape => ("↗", "Flèche (Alt : rectangle)", "R"),
-            ActiveTool::StickyNote => ("💬", "Note", "N"),
-            ActiveTool::Measure => ("📏", "Mesure", "M"),
+            ActiveTool::Ink => ("✏", crate::i18n::tr("Dessin", "Draw"), "D"),
+            ActiveTool::Shape => ("↗", crate::i18n::tr("Flèche (Alt : rectangle)", "Arrow (Alt: rectangle)"), "R"),
+            ActiveTool::StickyNote => ("💬", crate::i18n::tr("Note", "Note"), "N"),
+            ActiveTool::Measure => ("📏", crate::i18n::tr("Mesure", "Measure"), "M"),
         }
     }
 }
@@ -580,7 +580,7 @@ impl DocumentTab {
             return false;
         }
         if let Some(reason) = outcome.error {
-            self.ocr.status_summary = format!("OCR indisponible : {reason}");
+            self.ocr.status_summary = crate::trf!("OCR indisponible : {reason}", "OCR unavailable: {reason}");
             self.ocr.unavailable_reason = Some(reason);
             return false;
         }
@@ -705,6 +705,8 @@ pub enum PaletteCommand {
     OpenDeepOcrDialog,
     ShowShortcuts,
     OpenSettings,
+    /// Ouvre ou ferme l'assistant IA
+    ToggleAssistant,
     SaveAnnotatedPdf,
     SaveAs,
     Print,
@@ -855,43 +857,44 @@ impl ActionSpec {
 
 fn tool_keywords(tool: ActiveTool) -> (&'static str, &'static str) {
     match tool {
-        ActiveTool::Select => ("Sélectionner et copier du texte, déplacer une annotation", "selection selectionner copier"),
-        ActiveTool::Pan => ("Faire défiler le document à la main", "main deplacer"),
-        ActiveTool::Highlight => ("Surligner un passage du texte", "surligner surlignage"),
-        ActiveTool::FreeText => ("Écrire une zone de texte sur la page", "texte ecrire"),
-        ActiveTool::Ink => ("Dessiner à main levée", "dessin dessiner"),
-        ActiveTool::Shape => ("Tracer une flèche ou un rectangle", "fleche rectangle"),
-        ActiveTool::StickyNote => ("Ajouter un commentaire (note) sur la page", "commentaire note"),
-        ActiveTool::Measure => ("Mesurer une distance sur la page", "mesure mesurer"),
+        ActiveTool::Select => (crate::i18n::tr("Sélectionner et copier du texte, déplacer une annotation", "Select and copy text, move an annotation"), "selection selectionner copier select copy"),
+        ActiveTool::Pan => (crate::i18n::tr("Faire défiler le document à la main", "Scroll the document by hand"), "main deplacer hand pan move"),
+        ActiveTool::Highlight => (crate::i18n::tr("Surligner un passage du texte", "Highlight a passage of text"), "surligner surlignage highlight highlighter"),
+        ActiveTool::FreeText => (crate::i18n::tr("Écrire une zone de texte sur la page", "Write a text box on the page"), "texte ecrire text write"),
+        ActiveTool::Ink => (crate::i18n::tr("Dessiner à main levée", "Freehand drawing"), "dessin dessiner draw drawing ink"),
+        ActiveTool::Shape => (crate::i18n::tr("Tracer une flèche ou un rectangle", "Draw an arrow or a rectangle"), "fleche rectangle arrow rectangle shape"),
+        ActiveTool::StickyNote => (crate::i18n::tr("Ajouter un commentaire (note) sur la page", "Add a comment (note) on the page"), "commentaire note comment note"),
+        ActiveTool::Measure => (crate::i18n::tr("Mesurer une distance sur la page", "Measure a distance on the page"), "mesure mesurer measure distance"),
     }
 }
 
 fn action_specs() -> Vec<ActionSpec> {
     use PaletteCommand as C;
     let mut actions = vec![
-        ActionSpec::new("Fichier", "Ouvrir un PDF depuis le disque…", "Choisir un fichier dans l'explorateur", "ouvrir fichier parcourir", "Ctrl+O", C::OpenFileDialog),
-        ActionSpec::new("Fichier", "Enregistrer le PDF", "Annotations et texte reconnu par l'OCR inclus", "enregistrer sauvegarder", "Ctrl+S", C::SaveAnnotatedPdf),
-        ActionSpec::new("Fichier", "Enregistrer sous…", "Garder l'original et écrire une copie", "enregistrer sauvegarder copie", "Ctrl+Maj+S", C::SaveAs),
-        ActionSpec::new("Fichier", "Imprimer…", "", "imprimer impression imprimante", "Ctrl+P", C::Print),
-        ActionSpec::new("Document", "Rechercher dans le PDF", "Trouver un mot dans le document ouvert", "rechercher chercher trouver", "Ctrl+F", C::OpenSearch),
-        ActionSpec::new("Document", "OCR approfondi…", "Lit le texte scanné ou dessiné, page par page (lent)", "ocr approfondi scan scanner", "OCR", C::OpenDeepOcrDialog),
-        ActionSpec::new("Annotations", "Annuler", "Défaire la dernière modification d'annotation", "annuler", "Ctrl+Z", C::UndoAnnotation),
-        ActionSpec::new("Annotations", "Rétablir", "Refaire la modification annulée", "retablir refaire", "Ctrl+Y", C::RedoAnnotation),
-        ActionSpec::new("Annotations", "Supprimer l'annotation sélectionnée", "", "supprimer effacer", "Suppr", C::DeleteSelectedAnnotation),
-        ActionSpec::new("Onglet", "Fermer l'onglet actif", "", "fermer", "Ctrl+W", C::CloseActiveTab),
-        ActionSpec::new("Onglet", "Rouvrir le dernier onglet fermé", "", "rouvrir", "Ctrl+Maj+T", C::ReopenClosedTab),
-        ActionSpec::new("Affichage", "Ajuster à la largeur", "", "ajuster largeur zoom", "Ctrl+9", C::FitToWidth),
-        ActionSpec::new("Affichage", "Afficher la page entière", "", "ajuster page entiere zoom", "Ctrl+0", C::FitToPage),
-        ActionSpec::new("Affichage", "Zoom à 100 %", "", "zoom", "100%", C::ZoomReset100),
-        ActionSpec::new("Affichage", "Épingler ou masquer la barre latérale", "", "barre laterale epingler masquer", "Ctrl+B", C::ToggleSidebarPin),
-        ActionSpec::new("Aide", "Réglages", "Zoom à l'ouverture, lecture des images, historique…", "reglages parametres options preferences configuration", "Ctrl+,", C::OpenSettings),
-        ActionSpec::new("Aide", "Raccourcis clavier", "Tous les raccourcis, par thème", "aide raccourcis clavier touches help", "F1", C::ShowShortcuts),
-        ActionSpec::new("Mémoire", "Libérer la mémoire des onglets inactifs", "Met en veille les onglets que vous ne regardez pas", "memoire liberer", "", C::HibernateInactiveTabs),
+        ActionSpec::new(crate::i18n::tr("Fichier", "File"), crate::i18n::tr("Ouvrir un PDF depuis le disque…", "Open a PDF from the disk…"), crate::i18n::tr("Choisir un fichier dans l'explorateur", "Choose a file in File Explorer"), "ouvrir fichier parcourir open file browse", "Ctrl+O", C::OpenFileDialog),
+        ActionSpec::new(crate::i18n::tr("Fichier", "File"), crate::i18n::tr("Enregistrer le PDF", "Save the PDF"), crate::i18n::tr("Annotations et texte reconnu par l'OCR inclus", "Annotations and OCR text included"), "enregistrer sauvegarder save", "Ctrl+S", C::SaveAnnotatedPdf),
+        ActionSpec::new(crate::i18n::tr("Fichier", "File"), crate::i18n::tr("Enregistrer sous…", "Save as…"), crate::i18n::tr("Garder l'original et écrire une copie", "Keep the original and write a copy"), "enregistrer sauvegarder copie save as copy", crate::i18n::tr("Ctrl+Maj+S", "Ctrl+Shift+S"), C::SaveAs),
+        ActionSpec::new(crate::i18n::tr("Fichier", "File"), crate::i18n::tr("Imprimer…", "Print…"), "", "imprimer impression imprimante print printer", "Ctrl+P", C::Print),
+        ActionSpec::new(crate::i18n::tr("Document", "Document"), crate::i18n::tr("Rechercher dans le PDF", "Search in the PDF"), crate::i18n::tr("Trouver un mot dans le document ouvert", "Find a word in the open document"), "rechercher chercher trouver search find", "Ctrl+F", C::OpenSearch),
+        ActionSpec::new(crate::i18n::tr("Document", "Document"), crate::i18n::tr("OCR approfondi…", "Deep OCR…"), crate::i18n::tr("Lit le texte scanné ou dessiné, page par page (lent)", "Reads scanned or drawn text, page by page (slow)"), "ocr approfondi scan scanner deep", "OCR", C::OpenDeepOcrDialog),
+        ActionSpec::new(crate::i18n::tr("Annotations", "Annotations"), crate::i18n::tr(crate::i18n::tr("Annuler", "Cancel"), "Undo"), crate::i18n::tr("Défaire la dernière modification d'annotation", "Undo the last annotation change"), "annuler undo", "Ctrl+Z", C::UndoAnnotation),
+        ActionSpec::new(crate::i18n::tr("Annotations", "Annotations"), crate::i18n::tr("Rétablir", "Redo"), crate::i18n::tr("Refaire la modification annulée", "Redo the undone change"), "retablir refaire redo", "Ctrl+Y", C::RedoAnnotation),
+        ActionSpec::new(crate::i18n::tr("Annotations", "Annotations"), crate::i18n::tr("Supprimer l'annotation sélectionnée", "Delete the selected annotation"), "", "supprimer effacer delete remove", crate::i18n::tr("Suppr", "Del"), C::DeleteSelectedAnnotation),
+        ActionSpec::new(crate::i18n::tr("Onglet", "Tab"), crate::i18n::tr("Fermer l'onglet actif", "Close the active tab"), "", "fermer close", "Ctrl+W", C::CloseActiveTab),
+        ActionSpec::new(crate::i18n::tr("Onglet", "Tab"), crate::i18n::tr("Rouvrir le dernier onglet fermé", "Reopen the last closed tab"), "", "rouvrir reopen", crate::i18n::tr("Ctrl+Maj+T", "Ctrl+Shift+T"), C::ReopenClosedTab),
+        ActionSpec::new(crate::i18n::tr("Affichage", "View"), crate::i18n::tr("Ajuster à la largeur", "Fit width"), "", "ajuster largeur zoom fit width", "Ctrl+9", C::FitToWidth),
+        ActionSpec::new(crate::i18n::tr("Affichage", "View"), crate::i18n::tr("Afficher la page entière", "Show the whole page"), "", "ajuster page entiere zoom fit page whole", "Ctrl+0", C::FitToPage),
+        ActionSpec::new(crate::i18n::tr("Affichage", "View"), crate::i18n::tr("Zoom à 100 %", "Zoom to 100%"), "", "zoom", "100%", C::ZoomReset100),
+        ActionSpec::new(crate::i18n::tr("Affichage", "View"), crate::i18n::tr("Épingler ou masquer la barre latérale", "Pin or hide the sidebar"), "", "barre laterale epingler masquer sidebar pin hide", "Ctrl+B", C::ToggleSidebarPin),
+        ActionSpec::new(crate::i18n::tr("Aide", "Help"), crate::i18n::tr("Réglages", "Settings"), crate::i18n::tr("Zoom à l'ouverture, lecture des images, historique…", "Opening zoom, image reading, history…"), "reglages parametres options preferences configuration settings", "Ctrl+,", C::OpenSettings),
+        ActionSpec::new(crate::i18n::tr("Document", "Document"), crate::i18n::tr("Assistant IA", "AI assistant"), crate::i18n::tr("Questions sur le PDF, résumé, fiche de révision…", "Questions about the PDF, summary, study sheet…"), "assistant ia ai chat question resume claude openai gpt", "Ctrl+J", C::ToggleAssistant),
+        ActionSpec::new(crate::i18n::tr("Aide", "Help"), crate::i18n::tr("Raccourcis clavier", "Keyboard shortcuts"), crate::i18n::tr("Tous les raccourcis, par thème", "All shortcuts, by topic"), "aide raccourcis clavier touches help shortcuts keyboard keys", "F1", C::ShowShortcuts),
+        ActionSpec::new(crate::i18n::tr("Mémoire", "Memory"), crate::i18n::tr("Libérer la mémoire des onglets inactifs", "Free the memory of inactive tabs"), crate::i18n::tr("Met en veille les onglets que vous ne regardez pas", "Puts the tabs you are not looking at to sleep"), "memoire liberer memory free", "", C::HibernateInactiveTabs),
     ];
     for tool in ActiveTool::all() {
         let (_, name, key) = tool.icon_and_label();
         let (detail, keywords) = tool_keywords(*tool);
-        actions.push(ActionSpec::new("Outil", &format!("Outil {name}"), detail, keywords, key, C::SelectTool(*tool)));
+        actions.push(ActionSpec::new(crate::i18n::tr("Outil", "Tool"), &crate::trf!("Outil {name}", "{name} tool"), detail, keywords, key, C::SelectTool(*tool)));
     }
     actions
 }
@@ -956,16 +959,16 @@ impl CommandPaletteState {
 
         let page_entry = |page: usize| PaletteEntry {
             category: "Page",
-            label: format!("Aller à la page {page}"),
-            detail: format!("sur {active_tab_page_count}"),
-            shortcut: "Entrée",
+            label: crate::trf!("Aller à la page {page}", "Go to page {page}"),
+            detail: crate::trf!("sur {active_tab_page_count}", "of {active_tab_page_count}"),
+            shortcut: crate::i18n::tr("Entrée", "Enter"),
             command: PaletteCommand::JumpToPage(page - 1),
         };
         let zoom_entry = |percent: u32| PaletteEntry {
             category: "Zoom",
-            label: format!("Zoom à {percent} %"),
+            label: crate::trf!("Zoom à {percent} %", "Zoom to {percent}%"),
             detail: String::new(),
-            shortcut: "Entrée",
+            shortcut: crate::i18n::tr("Entrée", "Enter"),
             command: PaletteCommand::SetZoomPercent(percent),
         };
         let page_fits = |p: usize| p >= 1 && p <= active_tab_page_count;
@@ -992,9 +995,9 @@ impl CommandPaletteState {
                 let folder = normalize(&path.to_string_lossy());
                 if let Some(score) = match_score(&query, &normalize(title), &folder) {
                     scored.push((score + 1.5, PaletteEntry {
-                        category: "Onglet",
+                        category: crate::i18n::tr("Onglet", "Tab"),
                         label: crate::recent_files::decode_percent(title),
-                        detail: format!("Déjà ouvert · {pages} pages"),
+                        detail: crate::trf!("Déjà ouvert · {pages} pages", "Already open · {pages} pages"),
                         shortcut: TAB_SHORTCUTS.get(*idx).copied().unwrap_or("Ctrl+Tab"),
                         command: PaletteCommand::SwitchTab(*idx),
                     }));
@@ -1009,10 +1012,10 @@ impl CommandPaletteState {
                 continue; // déjà proposé comme onglet ouvert
             }
             scored.push((score, PaletteEntry {
-                category: "Récent",
+                category: crate::i18n::tr("Récent", "Recent"),
                 label: file.file_name(),
                 detail: file.folder_label(),
-                shortcut: if open_idx.is_some() { "ouvert" } else { "Entrée" },
+                shortcut: if open_idx.is_some() { crate::i18n::tr("ouvert", "open") } else { crate::i18n::tr("Entrée", "Enter") },
                 command: match open_idx {
                     Some(i) => PaletteCommand::SwitchTab(i),
                     None => PaletteCommand::OpenRecent(file.path.clone()),

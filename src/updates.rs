@@ -104,12 +104,12 @@ fn fetch_latest() -> Result<LatestRelease, String> {
         .set("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| match e {
-            ureq::Error::Status(404, _) => "Aucune version n'est encore publiée.".to_string(),
-            ureq::Error::Status(code, _) => format!("GitHub n'a pas répondu correctement (code {code}). Réessayez plus tard."),
-            ureq::Error::Transport(_) => "Impossible de joindre GitHub : vérifiez la connexion à Internet.".to_string(),
+            ureq::Error::Status(404, _) => crate::i18n::tr("Aucune version n'est encore publiée.", "No version has been published yet.").to_string(),
+            ureq::Error::Status(code, _) => crate::trf!("GitHub n'a pas répondu correctement (code {code}). Réessayez plus tard.", "GitHub did not answer correctly (code {code}). Try again later."),
+            ureq::Error::Transport(_) => crate::i18n::tr("Impossible de joindre GitHub : vérifiez la connexion à Internet.", "Cannot reach GitHub: check the Internet connection.").to_string(),
         })?;
-    let body = response.into_string().map_err(|_| "La réponse de GitHub est incomplète.".to_string())?;
-    serde_json::from_str(&body).map_err(|_| "La réponse de GitHub est illisible.".to_string())
+    let body = response.into_string().map_err(|_| crate::i18n::tr("La réponse de GitHub est incomplète.", "GitHub's answer is incomplete.").to_string())?;
+    serde_json::from_str(&body).map_err(|_| crate::i18n::tr("La réponse de GitHub est illisible.", "GitHub's answer cannot be read.").to_string())
 }
 
 /// Version publiée plus récente que celle-ci, s'il y en a une.

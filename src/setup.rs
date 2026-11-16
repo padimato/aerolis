@@ -124,12 +124,12 @@ impl SetupScreen {
                         .inner_margin(Margin::same(20))
                         .show(ui, |ui| {
                             ui.set_width(width);
-                            ui.label(RichText::new("Installation des composants").size(18.0).color(Color32::WHITE));
+                            ui.label(RichText::new(crate::i18n::tr("Installation des composants", "Installing components")).size(18.0).color(Color32::WHITE));
                             ui.label(
                                 RichText::new(
-                                    "Kite PDF télécharge ses composants une seule fois, depuis leur \
+                                    crate::i18n::tr("Kite PDF télécharge ses composants une seule fois, depuis leur \
                                      source officielle : le moteur qui affiche les PDF et celui qui \
-                                     lit le texte des images.",
+                                     lit le texte des images.", "Kite PDF downloads its components only once, from their official source: the engine that displays PDFs and the one that reads text in images."),
                                 )
                                 .size(12.0)
                                 .color(muted),
@@ -144,28 +144,28 @@ impl SetupScreen {
                                 if !self.job.required_ready() {
                                     ui.label(
                                         RichText::new(
-                                            "Le moteur qui affiche les PDF n'a pas pu être téléchargé. \
-                                             Vérifiez la connexion à Internet, puis réessayez.",
+                                            crate::i18n::tr("Le moteur qui affiche les PDF n'a pas pu être téléchargé. \
+                                             Vérifiez la connexion à Internet, puis réessayez.", "The engine that displays PDFs could not be downloaded. Check the Internet connection, then try again."),
                                         )
                                         .color(Color32::from_rgb(255, 130, 120)),
                                     );
-                                    if ui.button("Réessayer").clicked() {
+                                    if ui.button(crate::i18n::tr("Réessayer", "Try again")).clicked() {
                                         self.job = InstallJob::start(deps::missing(), ctx.clone());
                                     }
                                 } else if !self.job.failures().is_empty() {
                                     ui.label(
                                         RichText::new(
-                                            "La lecture du texte des images n'a pas pu être installée. \
+                                            crate::i18n::tr("La lecture du texte des images n'a pas pu être installée. \
                                              Tout le reste fonctionne ; vous pourrez réessayer plus tard \
-                                             depuis les Réglages.",
+                                             depuis les Réglages.", "Reading text in images could not be installed. Everything else works; you can try again later from Settings."),
                                         )
                                             .color(Color32::from_rgb(250, 200, 110)),
                                     );
                                     ui.horizontal(|ui| {
-                                        if ui.button("Réessayer").clicked() {
+                                        if ui.button(crate::i18n::tr("Réessayer", "Try again")).clicked() {
                                             self.job = InstallJob::start(deps::missing(), ctx.clone());
                                         }
-                                        if ui.button("Continuer sans").clicked() {
+                                        if ui.button(crate::i18n::tr("Continuer sans", "Continue without")).clicked() {
                                             self.proceed = true;
                                         }
                                     });
@@ -193,12 +193,12 @@ fn show_item(ui: &mut egui::Ui, item: &InstallItem, muted: Color32) {
         }
         // La version n'intéresse que les curieux : au survol.
         ui.label(RichText::new(&item.dependency.name).color(Color32::WHITE))
-            .on_hover_text(format!("Version {}", item.dependency.version));
+            .on_hover_text(crate::trf!("Version {}", "Version {}", item.dependency.version));
         if let InstallStatus::Downloading { received, total } = item.status {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let text = match total {
                     Some(t) if t > 0 => format!("{} %", received * 100 / t),
-                    _ => format!("{:.1} Mo", received as f32 / 1_048_576.0),
+                    _ => crate::trf!("{:.1} Mo", "{:.1} MB", received as f32 / 1_048_576.0),
                 };
                 ui.label(RichText::new(text).size(11.0).color(muted));
             });

@@ -61,6 +61,126 @@ impl Layout {
     }
 }
 
+/// Langue de l'interface.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Language {
+    /// Celle de Windows (français si Windows est en français, anglais sinon)
+    #[default]
+    Auto,
+    Fr,
+    En,
+}
+
+impl Language {
+    pub fn resolve(self) -> crate::i18n::Lang {
+        match self {
+            Language::Auto => crate::i18n::system_lang(),
+            Language::Fr => crate::i18n::Lang::Fr,
+            Language::En => crate::i18n::Lang::En,
+        }
+    }
+}
+
+/// Fournisseur de l'assistant IA. Les métadonnées (adresse, modèle par défaut, offre gratuite...) sont
+/// dans `ai::providers`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum AiProvider {
+    /// Google Gemini : offre gratuite, lit les longs PDF
+    #[default]
+    Gemini,
+    /// Groq : le plus rapide, offre gratuite limitée à de petits textes
+    Groq,
+    /// Mistral (La Plateforme) : offre gratuite, hébergé en Europe
+    Mistral,
+    /// OpenRouter : modèles gratuits « :free »
+    OpenRouter,
+    /// NVIDIA NIM (build.nvidia.com) : crédits gratuits
+    Nvidia,
+    /// Cerebras : essai
+    Cerebras,
+    Anthropic,
+    OpenAi,
+    /// Service compatible avec l'API d'OpenAI à une adresse choisie (Ollama en local...)
+    Custom,
+}
+
+impl AiProvider {
+    pub const ALL: [AiProvider; 9] = [
+        AiProvider::Gemini,
+        AiProvider::Groq,
+        AiProvider::Mistral,
+        AiProvider::OpenRouter,
+        AiProvider::Nvidia,
+        AiProvider::Cerebras,
+        AiProvider::Anthropic,
+        AiProvider::OpenAi,
+        AiProvider::Custom,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            AiProvider::Gemini => "gemini",
+            AiProvider::Groq => "groq",
+            AiProvider::Mistral => "mistral",
+            AiProvider::OpenRouter => "openrouter",
+            AiProvider::Nvidia => "nvidia",
+            AiProvider::Cerebras => "cerebras",
+            AiProvider::Anthropic => "anthropic",
+            AiProvider::OpenAi => "openai",
+            AiProvider::Custom => "custom",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        AiProvider::ALL.into_iter().find(|p| p.key() == key)
+    }
+}
+
+/// Réglages de l'assistant IA (les clés API sont dans le coffre de Windows, jamais ici).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AiPrefs {
+    /// Bouton rond de l'assistant en bas à droite
+    pub show_button: bool,
+    pub provider: AiProvider,
+    /// Modèle choisi pour chaque fournisseur, dans l'ordre de `AiProvider::ALL` (vide : modèle par défaut)
+    pub models: [String; 9],
+    /// Adresse du service compatible OpenAI (ex. `http://localhost:11434/v1`)
+    pub custom_url: String,
+    /// Envoyer en image les pages sans texte (scannées)
+    pub send_scanned_pages: bool,
+    /// Garder les conversations sur cet ordinateur
+    pub keep_conversations: bool,
+    /// Si le fournisseur choisi ne répond pas (limite atteinte, panne), essayer les autres dont la clé est rangée
+    pub fallback: bool,
+    /// Passer par le proxy de confidentialité PrivAiTe (installé à la demande)
+    pub privacy_proxy: bool,
+}
+
+impl Default for AiPrefs {
+    fn default() -> Self {
+        Self {
+            show_button: true,
+            provider: AiProvider::default(),
+            models: Default::default(),
+            custom_url: String::new(),
+            send_scanned_pages: true,
+            keep_conversations: true,
+            fallback: true,
+            privacy_proxy: false,
+        }
+    }
+}
+
+impl AiPrefs {
+    pub fn model(&self, provider: AiProvider) -> &str {
+        &self.models[provider as usize]
+    }
+
+    pub fn set_model(&mut self, provider: AiProvider, model: String) {
+        self.models[provider as usize] = model;
+    }
+}
+
 /// Préférences modifiables dans la page Réglages.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preferences {
@@ -73,11 +193,15 @@ pub struct Preferences {
     pub keep_history: bool,
     /// Consulter GitHub une fois par jour pour signaler une nouvelle version
     pub check_updates: bool,
+    pub language: Language,
+    pub ai: AiPrefs,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            language: Language::Auto,
+            ai: AiPrefs::default(),
             image_ocr: ImageOcr::Auto,
             open_zoom: OpenZoom::Actual,
             layout: Layout::Auto,
@@ -180,7 +304,25 @@ impl Settings {
                 "resume_reading" => settings.prefs.resume_reading = value.trim() != "0",
                 "keep_history" => settings.prefs.keep_history = value.trim() != "0",
                 "check_updates" => settings.prefs.check_updates = value.trim() != "0",
-                _ => {}
+                "language" => {
+                    settings.prefs.language = match value.trim() {
+                        "fr" => Language::Fr,
+                        "en" => Language::En,
+                        _ => Language::Auto,
+                    }
+                }
+                "ai_button" => settings.prefs.ai.show_button = value.trim() != "0",
+                "ai_provider" => settings.prefs.ai.provider = AiProvider::from_key(value.trim()).unwrap_or_default(),
+                "ai_fallback" => settings.prefs.ai.fallback = value.trim() != "0",
+                "ai_privacy" => settings.prefs.ai.privacy_proxy = value.trim() == "1",
+                "ai_custom_url" => settings.prefs.ai.custom_url = value.trim().to_string(),
+                "ai_scanned_pages" => settings.prefs.ai.send_scanned_pages = value.trim() != "0",
+                "ai_keep_conversations" => settings.prefs.ai.keep_conversations = value.trim() != "0",
+                other => {
+                    if let Some(provider) = other.strip_prefix("ai_model_").and_then(AiProvider::from_key) {
+                        settings.prefs.ai.set_model(provider, value.trim().to_string());
+                    }
+                }
             }
         }
         settings
@@ -228,6 +370,32 @@ impl Settings {
         ] {
             text.push_str(&format!("{key}={}\n", u8::from(value)));
         }
+        let language = match prefs.language {
+            Language::Auto => "auto",
+            Language::Fr => "fr",
+            Language::En => "en",
+        };
+        text.push_str(&format!("language={language}\n"));
+        let ai = &prefs.ai;
+        text.push_str(&format!("ai_provider={}\n", ai.provider.key()));
+        for (key, value) in [
+            ("ai_button", ai.show_button),
+            ("ai_scanned_pages", ai.send_scanned_pages),
+            ("ai_keep_conversations", ai.keep_conversations),
+            ("ai_fallback", ai.fallback),
+            ("ai_privacy", ai.privacy_proxy),
+        ] {
+            text.push_str(&format!("{key}={}\n", u8::from(value)));
+        }
+        for provider in AiProvider::ALL {
+            let model = ai.model(provider);
+            if !model.is_empty() {
+                text.push_str(&format!("ai_model_{}={model}\n", provider.key()));
+            }
+        }
+        if !ai.custom_url.is_empty() {
+            text.push_str(&format!("ai_custom_url={}\n", ai.custom_url));
+        }
         text
     }
 
@@ -271,6 +439,23 @@ mod tests {
                 resume_reading: false,
                 keep_history: true,
                 check_updates: false,
+                language: Language::En,
+                ai: AiPrefs {
+                    show_button: false,
+                    provider: AiProvider::Custom,
+                    models: {
+                        let mut models: [String; 9] = Default::default();
+                        models[AiProvider::Anthropic as usize] = "claude-sonnet-5-5".into();
+                        models[AiProvider::Groq as usize] = "openai/gpt-oss-20b".into();
+                        models[AiProvider::Custom as usize] = "llama3".into();
+                        models
+                    },
+                    custom_url: "http://localhost:11434/v1".into(),
+                    send_scanned_pages: false,
+                    keep_conversations: false,
+                    fallback: false,
+                    privacy_proxy: true,
+                },
             },
         };
         assert_eq!(Settings::parse(&settings.render()), settings);

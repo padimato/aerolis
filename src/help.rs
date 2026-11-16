@@ -8,56 +8,59 @@ const MUTED: Color32 = Color32::from_rgb(150, 160, 182);
 const KEY_FILL: Color32 = Color32::from_rgb(44, 50, 66);
 
 /// Raccourcis par thème : (touches, action).
-pub const SHORTCUTS: &[(&str, &[(&str, &str)])] = &[
+pub fn shortcuts() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
+    vec![
     (
-        "Fichiers",
-        &[
-            ("Ctrl+O", "Ouvrir un PDF (ou le glisser ici)"),
-            ("Ctrl+S", "Enregistrer"),
-            ("Ctrl+Maj+S", "Enregistrer une copie"),
-            ("Ctrl+P", "Imprimer"),
+        crate::i18n::tr("Fichiers", "Files"),
+        vec![
+            ("Ctrl+O", crate::i18n::tr("Ouvrir un PDF (ou le glisser ici)", "Open a PDF (or drag it here)")),
+            ("Ctrl+S", crate::i18n::tr("Enregistrer", "Save")),
+            (crate::i18n::tr("Ctrl+Maj+S", "Ctrl+Shift+S"), crate::i18n::tr("Enregistrer une copie", "Save a copy")),
+            ("Ctrl+P", crate::i18n::tr("Imprimer", "Print")),
         ],
     ),
     (
-        "Fenêtre et onglets",
-        &[
-            ("Ctrl+T", "PDF récents, page, zoom ou outil"),
-            ("Ctrl+Maj+T", "Rouvrir l'onglet fermé"),
-            ("Ctrl+W", "Fermer l'onglet"),
-            ("Ctrl+Tab", "Onglet suivant (Maj : précédent)"),
-            ("Ctrl+1 … 8", "Aller à l'onglet n°"),
-            ("Ctrl+B", "Garder la barre latérale ouverte"),
-            ("Ctrl+,", "Réglages"),
-            ("F1", "Cette aide"),
+        crate::i18n::tr("Fenêtre et onglets", "Window and tabs"),
+        vec![
+            ("Ctrl+T", crate::i18n::tr("PDF récents, page, zoom ou outil", "Recent PDFs, page, zoom or tool")),
+            (crate::i18n::tr("Ctrl+Maj+T", "Ctrl+Shift+T"), crate::i18n::tr("Rouvrir l'onglet fermé", "Reopen the closed tab")),
+            ("Ctrl+W", crate::i18n::tr("Fermer l'onglet", "Close the tab")),
+            ("Ctrl+Tab", crate::i18n::tr("Onglet suivant (Maj : précédent)", "Next tab (Shift: previous)")),
+            ("Ctrl+1 … 8", crate::i18n::tr("Aller à l'onglet n°", "Go to tab no.")),
+            ("Ctrl+B", crate::i18n::tr("Garder la barre latérale ouverte", "Keep the sidebar open")),
+            ("Ctrl+J", crate::i18n::tr("Assistant IA", "AI assistant")),
+            ("Ctrl+,", crate::i18n::tr("Réglages", "Settings")),
+            ("F1", crate::i18n::tr("Cette aide", "This help")),
         ],
     ),
     (
-        "Lecture",
-        &[
-            ("Ctrl+F", "Chercher un mot"),
-            ("Flèches", "Faire défiler"),
-            ("Pg préc. / Pg suiv.", "Écran précédent / suivant"),
-            ("Début / Fin", "Première / dernière page"),
-            ("Ctrl+molette", "Zoomer (ou pincer)"),
-            ("Ctrl+9 / Ctrl+0", "Ajuster à la largeur / à la page"),
-            ("Espace + glisser", "Déplacer la page"),
+        crate::i18n::tr("Lecture", "Reading"),
+        vec![
+            ("Ctrl+F", crate::i18n::tr("Chercher un mot", "Find a word")),
+            (crate::i18n::tr("Flèches", "Arrows"), crate::i18n::tr("Faire défiler", "Scroll")),
+            (crate::i18n::tr("Pg préc. / Pg suiv.", "Pg Up / Pg Down"), crate::i18n::tr("Écran précédent / suivant", "Previous / next screen")),
+            (crate::i18n::tr("Début / Fin", "Home / End"), crate::i18n::tr("Première / dernière page", "First / last page")),
+            (crate::i18n::tr("Ctrl+molette", "Ctrl+wheel"), crate::i18n::tr("Zoomer (ou pincer)", "Zoom (or pinch)")),
+            ("Ctrl+9 / Ctrl+0", crate::i18n::tr("Ajuster à la largeur / à la page", "Fit width / page")),
+            (crate::i18n::tr("Espace + glisser", "Space + drag"), crate::i18n::tr("Déplacer la page", "Move the page")),
         ],
     ),
     (
-        "Annotations",
-        &[
-            ("V", "Sélectionner, copier du texte"),
-            ("H", "Surligner"),
-            ("T", "Écrire du texte"),
-            ("D", "Dessiner"),
-            ("R", "Flèche ou rectangle"),
-            ("N", "Commentaire"),
-            ("M", "Mesurer"),
-            ("Ctrl+Z / Ctrl+Y", "Annuler / rétablir"),
-            ("Suppr", "Supprimer l'annotation choisie"),
+        crate::i18n::tr("Annotations", "Annotations"),
+        vec![
+            ("V", crate::i18n::tr("Sélectionner, copier du texte", "Select, copy text")),
+            ("H", crate::i18n::tr("Surligner", "Highlight")),
+            ("T", crate::i18n::tr("Écrire du texte", "Write text")),
+            ("D", crate::i18n::tr("Dessiner", "Draw")),
+            ("R", crate::i18n::tr("Flèche ou rectangle", "Arrow or rectangle")),
+            ("N", crate::i18n::tr("Commentaire", "Comment")),
+            ("M", crate::i18n::tr("Mesurer", "Measure")),
+            ("Ctrl+Z / Ctrl+Y", crate::i18n::tr("Annuler / rétablir", "Undo / redo")),
+            (crate::i18n::tr("Suppr", "Del"), crate::i18n::tr("Supprimer l'annotation choisie", "Delete the chosen annotation")),
         ],
     ),
-];
+]
+}
 
 /// Choix fait sur l'écran d'accueil.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,17 +99,17 @@ pub fn show_welcome(ctx: &egui::Context, logo: Option<&egui::TextureHandle>) -> 
                 ui.add(egui::Image::new(logo).fit_to_exact_size(Vec2::splat(40.0)));
             }
             ui.vertical(|ui| {
-                ui.label(RichText::new("Bienvenue dans Kite PDF").size(20.0).strong().color(Color32::WHITE));
-                ui.label(RichText::new("Quelques gestes pour bien démarrer").size(12.5).color(MUTED));
+                ui.label(RichText::new(crate::i18n::tr("Bienvenue dans Kite PDF", "Welcome to Kite PDF")).size(20.0).strong().color(Color32::WHITE));
+                ui.label(RichText::new(crate::i18n::tr("Quelques gestes pour bien démarrer", "A few gestures to get started")).size(12.5).color(MUTED));
             });
         });
         ui.add_space(14.0);
         let tips: [(&str, &str, &str); 5] = [
-            ("Ouvrir un PDF", "Ctrl+O", "ou glissez le fichier dans la fenêtre."),
-            ("Tout retrouver", "Ctrl+T", "vos PDF récents, une page (« 12 »), un zoom (« 150 % ») ou un outil (« surligner »)."),
-            ("Chercher un mot", "Ctrl+F", "y compris dans le texte des images."),
-            ("Annoter", "H  T  D  N", "surligner, écrire, dessiner, commenter. Ctrl+S enregistre dans le PDF."),
-            ("Barre latérale", "Ctrl+B", "onglets, outils et sommaire, au bord gauche de la fenêtre."),
+            (crate::i18n::tr("Ouvrir un PDF", "Open a PDF"), "Ctrl+O", crate::i18n::tr("ou glissez le fichier dans la fenêtre.", "or drag the file into the window.")),
+            (crate::i18n::tr("Tout retrouver", "Find everything"), "Ctrl+T", crate::i18n::tr("vos PDF récents, une page (« 12 »), un zoom (« 150 % ») ou un outil (« surligner »).", "your recent PDFs, a page (“12”), a zoom (“150 %”) or a tool (“highlight”).")),
+            (crate::i18n::tr("Chercher un mot", "Find a word"), "Ctrl+F", crate::i18n::tr("y compris dans le texte des images.", "including in the text of images.")),
+            (crate::i18n::tr("Annoter", "Annotate"), "H  T  D  N", crate::i18n::tr("surligner, écrire, dessiner, commenter. Ctrl+S enregistre dans le PDF.", "highlight, write, draw, comment. Ctrl+S saves into the PDF.")),
+            (crate::i18n::tr("Barre latérale", "Sidebar"), "Ctrl+B", crate::i18n::tr("onglets, outils et sommaire, au bord gauche de la fenêtre.", "tabs, tools and contents, at the left edge of the window.")),
         ];
         for (title, keys, text) in tips {
             ui.horizontal_wrapped(|ui| {
@@ -119,17 +122,17 @@ pub fn show_welcome(ctx: &egui::Context, logo: Option<&egui::TextureHandle>) -> 
         }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            if ui.link(RichText::new("Tous les raccourcis (F1)").size(12.0)).clicked() {
+            if ui.link(RichText::new(crate::i18n::tr("Tous les raccourcis (F1)", "All shortcuts (F1)")).size(12.0)).clicked() {
                 action = Some(WelcomeAction::ShowShortcuts);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let start = egui::Button::new(RichText::new("Commencer").size(13.5).color(Color32::WHITE))
+                let start = egui::Button::new(RichText::new(crate::i18n::tr("Commencer", "Get started")).size(13.5).color(Color32::WHITE))
                     .fill(Color32::from_rgb(52, 92, 190))
                     .min_size(Vec2::new(110.0, 32.0));
                 if ui.add(start).clicked() {
                     action = Some(WelcomeAction::Start);
                 }
-                let open = egui::Button::new(RichText::new("Ouvrir un PDF…").size(13.5)).min_size(Vec2::new(0.0, 32.0));
+                let open = egui::Button::new(RichText::new(crate::i18n::tr("Ouvrir un PDF…", "Open a PDF…")).size(13.5)).min_size(Vec2::new(0.0, 32.0));
                 if ui.add(open).clicked() {
                     action = Some(WelcomeAction::OpenFile);
                 }
@@ -157,9 +160,9 @@ pub fn show_shortcuts(ctx: &egui::Context) -> bool {
         ui.set_width(width - 44.0);
         ui.set_max_width(width - 44.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Raccourcis clavier").size(18.0).strong().color(Color32::WHITE));
+            ui.label(RichText::new(crate::i18n::tr("Raccourcis clavier", "Keyboard shortcuts")).size(18.0).strong().color(Color32::WHITE));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Fermer").clicked() {
+                if ui.button(crate::i18n::tr("Fermer", "Close")).clicked() {
                     keep_open = false;
                 }
             });
@@ -171,7 +174,8 @@ pub fn show_shortcuts(ctx: &egui::Context) -> bool {
             .max_height(max_height)
             .min_scrolled_height(max_height.min(600.0))
             .show(ui, |ui| {
-            let group = |ui: &mut egui::Ui, (title, entries): &(&str, &[(&str, &str)])| {
+            let shortcuts = shortcuts();
+            let group = |ui: &mut egui::Ui, (title, entries): &(&str, Vec<(&str, &str)>)| {
                 ui.label(RichText::new(*title).size(13.5).strong().color(Color32::from_rgb(130, 170, 255)));
                 ui.add_space(2.0);
                 egui::Grid::new(("kite_shortcuts_grid", *title)).num_columns(2).spacing([10.0, 5.0]).show(ui, |ui| {
@@ -192,12 +196,12 @@ pub fn show_shortcuts(ctx: &egui::Context) -> bool {
             ui.columns(layout.len(), |cols| {
                 for (col, groups) in cols.iter_mut().zip(layout) {
                     for &g in *groups {
-                        group(col, &SHORTCUTS[g]);
+                        group(col, &shortcuts[g]);
                     }
                 }
             });
         });
-        ui.label(RichText::new("F1 ouvre et ferme cette aide · Échap la ferme").size(11.0).color(MUTED));
+        ui.label(RichText::new(crate::i18n::tr("F1 ouvre et ferme cette aide · Échap la ferme", "F1 opens and closes this help · Esc closes it")).size(11.0).color(MUTED));
     });
     if modal.should_close() {
         keep_open = false;

@@ -1,9 +1,12 @@
 // Version distribuée : pas de fenêtre de console à côté de l'application.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod annotations;mod bench;
+mod ai;
+mod annotations;
+mod bench;
 mod deps;
 mod help;
+mod i18n;
 mod settings;
 mod settings_page;
 mod setup;
@@ -232,6 +235,45 @@ fn parse_args() -> AutomationConfig {
             }
             "--settings" => {
                 cfg.show_settings = true;
+                if let Some(section) = args.get(i + 1).and_then(|s| settings_page::Section::from_key(s)) {
+                    cfg.settings_section = Some(section);
+                    i += 1;
+                }
+            }
+            "--lang" => {
+                if let Some(lang) = args.get(i + 1) {
+                    cfg.language = Some(if lang == "en" { settings::Language::En } else { settings::Language::Fr });
+                    i += 1;
+                }
+            }
+            "--ai-demo" => cfg.ai_demo = Some(app::AiDemo::Conversation),
+            "--ai-empty" => cfg.ai_demo = Some(app::AiDemo::Empty),
+            "--ai-setup" => cfg.ai_demo = Some(app::AiDemo::Setup),
+            "--ai-capture" => cfg.ai_demo = Some(app::AiDemo::Capture),
+            "--selection-menu" => cfg.selection_menu = true,
+            "--ai-provider" => {
+                if let Some(provider) = args.get(i + 1).and_then(|p| settings::AiProvider::from_key(p)) {
+                    cfg.ai_provider = Some(provider);
+                    i += 1;
+                }
+            }
+            "--ai-model" => {
+                if let Some(model) = args.get(i + 1) {
+                    cfg.ai_model = Some(model.clone());
+                    i += 1;
+                }
+            }
+            "--ai-attach" => {
+                if let Some(path) = args.get(i + 1) {
+                    cfg.ai_attach.push(PathBuf::from(path));
+                    i += 1;
+                }
+            }
+            "--ai-ask" => {
+                if let Some(question) = args.get(i + 1) {
+                    cfg.ai_ask = Some(question.clone());
+                    i += 1;
+                }
             }
             "--shortcuts" => {
                 cfg.show_shortcuts = true;
@@ -342,7 +384,7 @@ fn main() -> eframe::Result<()> {
 
     // `--fetch-deps [dossier]` : installe PDFium et l'OCR (dossier courant par défaut) puis quitte.
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--fetch-deps" || a == "--bench") || std::env::var_os(QA_ENV).is_some() {
+    if args.iter().any(|a| a == "--fetch-deps" || a == "--bench" || a == "--ai-list-models" || a == "--privaite-install") || std::env::var_os(QA_ENV).is_some() {
         attach_parent_console();
     }
     if let Some(pos) = args.iter().position(|a| a == "--fetch-deps") {
@@ -360,6 +402,49 @@ fn main() -> eframe::Result<()> {
             std::process::exit(2);
         };
         std::process::exit(bench::run(std::path::Path::new(pdf)));
+    }
+
+    // `--privaite-install` : installe le proxy de confidentialité comme le bouton des Réglages, en affichant les étapes.
+    if args.iter().any(|a| a == "--privaite-install") {
+        let ctx = egui::Context::default();
+        ai::privacy::start_install(args.iter().any(|a| a == "en"), ctx);
+        let mut last = String::new();
+        loop {
+            let state = ai::privacy::install_state();
+            let line = match &state {
+                ai::privacy::InstallState::Running { step, label, detail } => format!("[{step}/{}] {label} {detail}", ai::privacy::INSTALL_STEPS),
+                ai::privacy::InstallState::Failed(e) => {
+                    eprintln!("ÉCHEC : {e}");
+                    std::process::exit(1);
+                }
+                ai::privacy::InstallState::Idle => {
+                    let ok = ai::privacy::is_installed();
+                    println!("{}", if ok { "PrivAiTe installé." } else { "Installation interrompue." });
+                    std::process::exit(if ok { 0 } else { 1 });
+                }
+            };
+            if line != last {
+                println!("{line}");
+                last = line;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
+    if let Some(pos) = args.iter().position(|a| a == "--ai-list-models") {
+        let Some(provider) = args.get(pos + 1).and_then(|p| settings::AiProvider::from_key(p)) else {
+            eprintln!("Usage : kite-pdf --ai-list-models gemini|groq|mistral|openrouter|nvidia|cerebras|anthropic|openai");
+            std::process::exit(2);
+        };
+        let key = ai::keystore::load(provider);
+        match ai::net::list_models(provider, &ai::base_url(provider, ""), key.as_deref()) {
+            Ok(models) => models.iter().for_each(|m| println!("{m}")),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
     }
 
     let cfg = parse_args();

@@ -32,12 +32,12 @@ impl LineEnding {
 
     pub fn label(self) -> &'static str {
         match self {
-            LineEnding::None => "Aucun",
-            LineEnding::OpenArrow => "Flèche",
-            LineEnding::ClosedArrow => "Pleine",
-            LineEnding::Circle => "Cercle",
-            LineEnding::Square => "Carré",
-            LineEnding::Diamond => "Losange",
+            LineEnding::None => crate::i18n::tr("Aucun", "None"),
+            LineEnding::OpenArrow => crate::i18n::tr("Flèche", "Arrow"),
+            LineEnding::ClosedArrow => crate::i18n::tr("Pleine", "Filled"),
+            LineEnding::Circle => crate::i18n::tr("Cercle", "Circle"),
+            LineEnding::Square => crate::i18n::tr("Carré", "Square"),
+            LineEnding::Diamond => crate::i18n::tr("Losange", "Diamond"),
         }
     }
 
@@ -390,9 +390,9 @@ impl PdfAnnotation {
 
     pub fn type_badge(&self) -> &'static str {
         match &self.kind {
-            AnnotationKind::Highlight { .. } => "Surlignage (/Highlight)",
-            AnnotationKind::FreeText { .. } => "Bloc Texte (/FreeText)",
-            AnnotationKind::Ink { .. } => "Dessin Libre (/Ink)",
+            AnnotationKind::Highlight { .. } => crate::i18n::tr("Surlignage (/Highlight)", "Highlight (/Highlight)"),
+            AnnotationKind::FreeText { .. } => crate::i18n::tr("Bloc Texte (/FreeText)", "Text box (/FreeText)"),
+            AnnotationKind::Ink { .. } => crate::i18n::tr("Dessin Libre (/Ink)", "Freehand drawing (/Ink)"),
             AnnotationKind::Shape {
                 shape_kind: ShapeKind::Rectangle,
                 ..
@@ -406,10 +406,10 @@ impl PdfAnnotation {
                 ..
             } => "Flèche (/Line)",
             AnnotationKind::StickyNote { anchor_quads, .. } if !anchor_quads.is_empty() => {
-                "Note sur le texte"
+                crate::i18n::tr("Note sur le texte", "Note on the text")
             }
-            AnnotationKind::StickyNote { .. } => "Note (/Text)",
-            AnnotationKind::Measure { .. } => "Mesure & Cote (/Measure)",
+            AnnotationKind::StickyNote { .. } => crate::i18n::tr("Note (/Text)", "Note (/Text)"),
+            AnnotationKind::Measure { .. } => crate::i18n::tr("Mesure & Cote (/Measure)", "Measure (/Measure)"),
         }
     }
 
@@ -1036,8 +1036,8 @@ pub fn save_pdf_with_ocr_state(
     form_edits: &[(String, FormEdit)],
 ) -> Result<()> {
     let mut doc = Document::load(source_path).with_context(|| {
-        format!(
-            "Impossible de charger le PDF source pour sauvegarde : {}",
+        crate::trf!(
+            "Impossible de charger le PDF source pour sauvegarde : {}", "Cannot load the source PDF to save: {}",
             source_path.display()
         )
     })?;
@@ -1046,9 +1046,9 @@ pub fn save_pdf_with_ocr_state(
     // protection sans prévenir.
     if doc.is_encrypted() {
         anyhow::bail!(
-            "Ce PDF est protégé (mot de passe ou restrictions) : l'enregistrement des modifications \
-             n'est pas encore pris en charge pour ces documents."
-        );
+            "{}", crate::trf!("Ce PDF est protégé (mot de passe ou restrictions) : l'enregistrement des modifications \
+             n'est pas encore pris en charge pour ces documents.", "This PDF is protected (password or restrictions): saving changes is not supported yet for these documents."
+        ));
     }
 
     // Police Helvetica standard pour les flux d'apparence /FreeText
@@ -1149,15 +1149,15 @@ pub fn save_pdf_with_ocr_state(
     let temp_path = dest_path.with_extension("kite-save.tmp");
     forget_previous_revisions(&mut doc);
     doc.save(&temp_path).with_context(|| {
-        format!(
-            "Échec d'écriture du fichier PDF annoté : {}",
+        crate::trf!(
+            "Échec d'écriture du fichier PDF annoté : {}", "Cannot write the annotated PDF file: {}",
             temp_path.display()
         )
     })?;
     std::fs::rename(&temp_path, dest_path).with_context(|| {
         let _ = std::fs::remove_file(&temp_path);
-        format!(
-            "Impossible de remplacer le fichier PDF : {}",
+        crate::trf!(
+            "Impossible de remplacer le fichier PDF : {}", "Cannot replace the PDF file: {}",
             dest_path.display()
         )
     })?;

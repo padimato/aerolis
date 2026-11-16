@@ -142,7 +142,7 @@ impl ViewportState {
                 self.zoom = (target_w / base_w).clamp(MIN_ZOOM, MAX_ZOOM);
                 self.scroll_offset.x = 0.0;
                 self.clamp_scroll(viewport_size, pages);
-                self.last_gesture_label = format!("Ajusté à la largeur ({:.0}%)", self.zoom * 100.0);
+                self.last_gesture_label = crate::trf!("Ajusté à la largeur ({:.0}%)", "Fit to width ({:.0}%)", self.zoom * 100.0);
             }
         }
     }
@@ -156,7 +156,7 @@ impl ViewportState {
                 self.zoom = (target_h / base_h).clamp(MIN_ZOOM, MAX_ZOOM);
                 self.scroll_offset.x = 0.0;
                 self.clamp_scroll(viewport_size, pages);
-                self.last_gesture_label = format!("Ajusté à la page ({:.0}%)", self.zoom * 100.0);
+                self.last_gesture_label = crate::trf!("Ajusté à la page ({:.0}%)", "Fit to page ({:.0}%)", self.zoom * 100.0);
             }
         }
     }
@@ -172,7 +172,7 @@ impl ViewportState {
         if let Some(target) = layouts.get(page_index) {
             self.scroll_offset.y = (target.y_top - PAGE_GAP_PX * 0.5).max(0.0);
             self.clamp_scroll(viewport_size, pages);
-            self.last_gesture_label = format!("Saut vers Page {}", page_index + 1);
+            self.last_gesture_label = crate::trf!("Saut vers Page {}", "Jump to page {}", page_index + 1);
         }
     }
 

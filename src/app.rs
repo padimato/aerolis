@@ -148,7 +148,7 @@ fn font_size_row(ui: &mut egui::Ui, current: f32) -> Option<f32> {
     let (min_size, max_size) = FREETEXT_FONT_SIZE_RANGE;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.0;
-        ui.label(egui::RichText::new("Taille").size(10.5));
+        ui.label(egui::RichText::new(crate::i18n::tr("Taille", "Size")).size(10.5));
         if ui.small_button("−").clicked() {
             picked = Some((current - 1.0).round().max(min_size));
         }
@@ -184,7 +184,7 @@ fn review_state_label(state: &str) -> &'static str {
     REVIEW_STATES
         .iter()
         .find(|(value, _)| *value == state)
-        .map_or("", |(_, label)| *label)
+        .map_or("", |(_, label)| crate::i18n::label(label))
 }
 
 /// Ligne de choix « Aucun + nuancier ». Retourne le nouveau choix quand l'utilisateur en fait un.
@@ -192,13 +192,13 @@ fn color_choice_row(
     ui: &mut egui::Ui,
     title: &str,
     current: Option<Rgb>,
-    choices: &[(&str, Rgb)],
+    choices: &[(&'static str, Rgb)],
 ) -> Option<Option<Rgb>> {
     let mut picked = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 3.0;
         ui.label(egui::RichText::new(title).size(10.5));
-        if ui.selectable_label(current.is_none(), "Aucun").clicked() {
+        if ui.selectable_label(current.is_none(), crate::i18n::tr("Aucun", "None")).clicked() {
             picked = Some(None);
         }
         for (name, rgb) in choices {
@@ -209,7 +209,7 @@ fn color_choice_row(
             )
             .fill(Color32::from_rgb(rgb.0, rgb.1, rgb.2))
             .min_size(Vec2::new(17.0, 16.0));
-            if ui.add(swatch).on_hover_text(*name).clicked() {
+            if ui.add(swatch).on_hover_text(crate::i18n::label(name)).clicked() {
                 picked = Some(Some(*rgb));
             }
         }
@@ -414,6 +414,34 @@ pub struct AutomationConfig {
     pub ui_zoom: Option<f32>,
     /// Ouvre la liste des onglets de la barre du haut au démarrage (captures QA)
     pub open_tabs_menu: bool,
+    /// Rubrique de la page Réglages ouverte au démarrage (captures QA)
+    pub settings_section: Option<crate::settings_page::Section>,
+    /// Langue imposée (captures QA)
+    pub language: Option<crate::settings::Language>,
+    /// Assistant IA ouvert au démarrage dans un état de démonstration (captures QA)
+    pub ai_demo: Option<AiDemo>,
+    /// Menu du clic droit sur la sélection ouvert au démarrage (captures QA)
+    pub selection_menu: bool,
+    /// Question envoyée à l'assistant au démarrage (essai de bout en bout, captures QA)
+    pub ai_ask: Option<String>,
+    /// Fournisseur et modèle de l'assistant imposés (essais)
+    pub ai_provider: Option<crate::settings::AiProvider>,
+    /// Images jointes à la question de démarrage (essais)
+    pub ai_attach: Vec<PathBuf>,
+    pub ai_model: Option<String>,
+}
+
+/// États de l'assistant IA montrés par les captures QA (aucune requête n'est envoyée).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiDemo {
+    /// Première ouverture : fournisseur et clé
+    Setup,
+    /// Conversation vide : boutons rapides
+    Empty,
+    /// Question avec une zone capturée et réponse avec renvois de page
+    Conversation,
+    /// Tracé d'une zone à capturer
+    Capture,
 }
 
 pub struct KiteApp {
@@ -441,8 +469,17 @@ pub struct KiteApp {
     prefs: crate::settings::Preferences,
     /// Page Réglages ouverte
     settings_open: bool,
-    /// « Effacer l'historique » cliqué une première fois : attend la confirmation
-    confirm_clear_history: bool,
+    /// Page Réglages : rubrique ouverte, saisies en cours
+    settings_page: crate::settings_page::PageState,
+    /// Assistant IA : bouton rond et fenêtre de discussion
+    ai: crate::ai::panel::AiPanel,
+    /// Modèles proposés par le fournisseur d'IA (page Réglages) et leur lecture en cours
+    ai_models: crate::settings_page::ModelList,
+    ai_models_rx: Option<(crate::settings::AiProvider, std::sync::mpsc::Receiver<Result<Vec<String>, String>>)>,
+    /// Début du rectangle tracé pour capturer une zone de page (assistant IA)
+    ai_capture_start: Option<Pos2>,
+    /// Menu du clic droit sur une sélection de texte : position et image d'ouverture
+    selection_menu: Option<(Pos2, u64)>,
     /// Dernière position et taille connues de la fenêtre non agrandie, et si elle est agrandie
     last_window: Option<[f32; 4]>,
     last_maximized: bool,
@@ -653,7 +690,15 @@ impl KiteApp {
             logo: load_logo(egui_ctx),
             welcome_open: false,
             settings_open: automation.show_settings,
-            confirm_clear_history: false,
+            settings_page: crate::settings_page::PageState {
+                section: automation.settings_section.unwrap_or_default(),
+                ..Default::default()
+            },
+            ai: crate::ai::panel::AiPanel::new(crate::settings::persistence_enabled(automation.screenshot_output.is_some())),
+            ai_models: Default::default(),
+            ai_models_rx: None,
+            ai_capture_start: None,
+            selection_menu: None,
             prefs: crate::settings::Preferences::default(),
             shortcuts_open: automation.show_shortcuts,
             first_render_reported: false,
@@ -693,6 +738,18 @@ impl KiteApp {
         if let Some(settings) = &app.settings {
             app.prefs = settings.prefs.clone();
         }
+        if let Some(language) = automation.language {
+            app.prefs.language = language;
+        }
+        if let Some(provider) = automation.ai_provider {
+            app.prefs.ai.provider = provider;
+        }
+        if let Some(model) = &automation.ai_model {
+            let provider = app.prefs.ai.provider;
+            app.prefs.ai.set_model(provider, model.clone());
+        }
+        crate::i18n::set(app.prefs.language.resolve());
+        app.start_ai_demo(egui_ctx);
         if automation.check_update_now {
             crate::updates::check_now(egui_ctx.clone());
         }
@@ -721,7 +778,7 @@ impl KiteApp {
         if let Some(tab) = app.tabs.get_mut(app.active_tab) {
             if let Some(z) = automation.initial_zoom {
                 tab.viewport.zoom = z;
-                tab.viewport.last_gesture_label = format!("Zoom initial {:.0}%", z * 100.0);
+                tab.viewport.last_gesture_label = crate::trf!("Zoom initial {:.0}%", "Initial zoom {:.0}%", z * 100.0);
             }
             if let Some(p) = automation.initial_page {
                 let target_idx = p.saturating_sub(1);
@@ -1017,9 +1074,9 @@ impl KiteApp {
         let muted = Color32::from_rgb(140, 150, 172);
         let mut chosen = None;
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("SOMMAIRE").size(10.5).strong().color(muted));
+            ui.label(egui::RichText::new(crate::i18n::tr("SOMMAIRE", "CONTENTS")).size(10.5).strong().color(muted));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("✖").on_hover_text("Fermer le sommaire").clicked() {
+                if ui.small_button("✖").on_hover_text(crate::i18n::tr("Fermer le sommaire", "Close the contents")).clicked() {
                     self.outline_open = false;
                 }
             });
@@ -1032,10 +1089,10 @@ impl KiteApp {
                 if tab.outline.is_none() {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new().size(11.0));
-                        ui.label(egui::RichText::new("Lecture du sommaire…").size(11.5).color(muted));
+                        ui.label(egui::RichText::new(crate::i18n::tr("Lecture du sommaire…", "Reading the contents…")).size(11.5).color(muted));
                     });
                 } else if entries.is_empty() {
-                    ui.label(egui::RichText::new("Ce document n'a pas de sommaire.").size(11.5).color(muted));
+                    ui.label(egui::RichText::new(crate::i18n::tr("Ce document n'a pas de sommaire.", "This document has no table of contents.")).size(11.5).color(muted));
                 }
                 ui.spacing_mut().item_spacing.y = 1.0;
                 for (index, entry) in entries.iter().enumerate() {
@@ -1048,7 +1105,7 @@ impl KiteApp {
                         let label = egui::Button::new(text).frame(false).wrap().selected(is_current);
                         let response = ui.add_enabled(entry.page.is_some(), label);
                         let response = match entry.page {
-                            Some(page) => response.on_hover_text(format!("Page {}", page + 1)),
+                            Some(page) => response.on_hover_text(crate::trf!("Page {}", "Page {}", page + 1)),
                             None => response,
                         };
                         if response.clicked() {
@@ -1347,7 +1404,7 @@ impl KiteApp {
     /// `pdf_printer_output` : impression sans dialogue vers « Microsoft Print to PDF » (vérifications).
     fn print_active_tab(&mut self, pdf_printer_output: Option<PathBuf>) {
         if self.print_job.as_ref().is_some_and(|j| !j.progress.lock().map(|p| p.finished).unwrap_or(true)) {
-            self.error_message = Some("Une impression est déjà en cours.".to_string());
+            self.error_message = Some(crate::i18n::tr("Une impression est déjà en cours.", "A print job is already running.").to_string());
             return;
         }
         let Some(tab) = self.tabs.get_mut(self.active_tab) else { return };
@@ -1400,14 +1457,14 @@ impl KiteApp {
             ctx.request_repaint_after(Duration::from_millis(300));
         }
         let message = match (&progress.error, progress.finished) {
-            (Some(error), _) => format!("Impression de « {} » impossible : {error}", job.document),
-            (None, true) => format!(
-                "« {} » envoyé à l'imprimante ({} page{}).",
+            (Some(error), _) => crate::trf!("Impression de « {} » impossible : {error}", "Cannot print “{}”: {error}", job.document),
+            (None, true) => crate::trf!(
+                "« {} » envoyé à l'imprimante ({} page{}).", "“{}” sent to the printer ({} page{}).",
                 job.document,
                 progress.total,
                 if progress.total > 1 { "s" } else { "" }
             ),
-            (None, false) => format!("Impression de « {} » : page {} / {}", job.document, progress.done + 1, progress.total),
+            (None, false) => crate::trf!("Impression de « {} » : page {} / {}", "Printing “{}”: page {} / {}", job.document, progress.done + 1, progress.total),
         };
         let mut close = false;
         let width = (canvas_rect.width() - 48.0).min(480.0);
@@ -1429,7 +1486,7 @@ impl KiteApp {
                             ui.label(egui::RichText::new(message).size(12.5).color(Color32::WHITE));
                             if progress.finished {
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.small_button("Fermer").clicked() {
+                                    if ui.small_button(crate::i18n::tr("Fermer", "Close")).clicked() {
                                         close = true;
                                     }
                                 });
@@ -1467,9 +1524,9 @@ impl KiteApp {
                     .inner_margin(Margin::same(18))
                     .show(ui, |ui| {
                         ui.set_width(width - 36.0);
-                        ui.label(egui::RichText::new("Document protégé").size(17.0).color(Color32::WHITE));
+                        ui.label(egui::RichText::new(crate::i18n::tr("Document protégé", "Protected document")).size(17.0).color(Color32::WHITE));
                         ui.label(
-                            egui::RichText::new(format!("« {name} » demande un mot de passe pour s'ouvrir."))
+                            egui::RichText::new(crate::trf!("« {name} » demande un mot de passe pour s'ouvrir.", "“{name}” needs a password to open."))
                                 .size(12.0)
                                 .color(Color32::from_rgb(150, 160, 182)),
                         );
@@ -1477,7 +1534,7 @@ impl KiteApp {
                         let field = ui.add(
                             egui::TextEdit::singleline(&mut prompt.input)
                                 .password(true)
-                                .hint_text("Mot de passe")
+                                .hint_text(crate::i18n::tr("Mot de passe", "Password"))
                                 .desired_width(width - 36.0),
                         );
                         if prompt.focus_requested {
@@ -1490,22 +1547,22 @@ impl KiteApp {
                         }
                         if prompt.wrong {
                             ui.label(
-                                egui::RichText::new("Mot de passe incorrect.")
+                                egui::RichText::new(crate::i18n::tr("Mot de passe incorrect.", "Wrong password."))
                                     .size(11.5)
                                     .color(Color32::from_rgb(255, 130, 120)),
                             );
                         }
                         ui.label(
-                            egui::RichText::new("Il n'est gardé que jusqu'à la fermeture de l'application.")
+                            egui::RichText::new(crate::i18n::tr("Il n'est gardé que jusqu'à la fermeture de l'application.", "It is only kept until the application closes."))
                                 .size(10.5)
                                 .color(Color32::from_rgb(120, 130, 152)),
                         );
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
-                            if ui.add_enabled(!prompt.input.is_empty(), egui::Button::new("Ouvrir")).clicked() {
+                            if ui.add_enabled(!prompt.input.is_empty(), egui::Button::new(crate::i18n::tr("Ouvrir", "Open"))).clicked() {
                                 submit = true;
                             }
-                            if ui.button("Annuler").clicked() {
+                            if ui.button(crate::i18n::tr("Annuler", "Cancel")).clicked() {
                                 cancel = true;
                             }
                         });
@@ -1626,21 +1683,26 @@ impl KiteApp {
             painter.text(
                 screen.center(),
                 Align2::CENTER_CENTER,
-                "Déposer pour ouvrir",
+                crate::i18n::tr("Déposer pour ouvrir", "Drop to open"),
                 FontId::proportional(22.0),
                 Color32::WHITE,
             );
         }
         let mut refused = Vec::new();
         for path in dropped {
-            if is_pdf(&path) {
+            if crate::ai::panel::is_image_file(&path) {
+                // Image glissée : jointe à la prochaine question de l'assistant.
+                if self.ai.attach_files(std::slice::from_ref(&path)) == 0 {
+                    refused.push(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+                }
+            } else if is_pdf(&path) {
                 self.open_pdf_in_new_tab(&path);
             } else {
                 refused.push(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
             }
         }
         if !refused.is_empty() {
-            self.error_message = Some(format!("Seuls les PDF s'ouvrent ici : {}", refused.join(", ")));
+            self.error_message = Some(crate::trf!("Seuls les PDF s'ouvrent ici : {}", "Only PDFs open here: {}", refused.join(", ")));
         }
     }
 
@@ -1682,8 +1744,8 @@ impl KiteApp {
         let Some(tab) = self.tabs.get(self.active_tab) else { return };
         let stem = tab.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let mut dialog = rfd::FileDialog::new()
-            .add_filter("Document PDF", &["pdf"])
-            .set_file_name(format!("{stem} (copie).pdf"));
+            .add_filter(crate::i18n::tr("Document PDF", "PDF document"), &["pdf"])
+            .set_file_name(crate::trf!("{stem} (copie).pdf", "{stem} (copy).pdf"));
         if let Some(dir) = tab.path.parent() {
             dialog = dialog.set_directory(dir);
         }
@@ -1813,7 +1875,7 @@ impl KiteApp {
             }
             PaletteCommand::OpenFileDialog => {
                 if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Document PDF", &["pdf"])
+                    .add_filter(crate::i18n::tr("Document PDF", "PDF document"), &["pdf"])
                     .pick_file()
                 {
                     self.open_pdf_in_new_tab(&path);
@@ -1834,7 +1896,7 @@ impl KiteApp {
                 } else {
                     self.recent_files.remove(&path);
                     self.error_message =
-                        Some(format!("« {} » est introuvable : il a peut-être été déplacé ou supprimé.", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
+                        Some(crate::trf!("« {} » est introuvable : il a peut-être été déplacé ou supprimé.", "“{}” cannot be found: it may have been moved or deleted.", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
                 }
             }
             PaletteCommand::ReopenClosedTab => {
@@ -1851,6 +1913,7 @@ impl KiteApp {
             PaletteCommand::ShowShortcuts => {
                 self.shortcuts_open = true;
             }
+            PaletteCommand::ToggleAssistant => self.ai.toggle(),
             PaletteCommand::OpenDeepOcrDialog => {
                 self.open_deep_ocr_dialog(viewport_size);
             }
@@ -1918,7 +1981,7 @@ impl KiteApp {
                     tab.viewport.scroll_offset.x = 0.0;
                     tab.viewport
                         .clamp_scroll(viewport_size, &tab.page_dimensions);
-                    tab.viewport.last_gesture_label = "Zoom 100%".to_string();
+                    tab.viewport.last_gesture_label = crate::i18n::tr("Zoom 100%", "Zoom 100%").to_string();
                 }
             }
             PaletteCommand::SetZoomPercent(percent) => {
@@ -1982,6 +2045,8 @@ impl KiteApp {
         let mut trigger_search_open = false;
         let mut copy_selected_text = false;
         let text_input_focused = self.text_field_focused_prev;
+        // Molette au-dessus d'une fenêtre flottante (assistant, recherche...) : elle défile, pas le document.
+        let pointer_over_floating = ctx.is_pointer_over_area();
 
         ctx.input(|input| {
             // 1. Capture d'écran GPU automatisée
@@ -2157,8 +2222,9 @@ impl KiteApp {
             let pages = &tab.page_dimensions;
 
             let pointer_pos = input.pointer.hover_pos();
-            let pointer_over_sidebar = sidebar_shown(&self.sidebar, self.top_layout)
-                && pointer_pos.map(|p| p.x <= self.sidebar.width).unwrap_or(false);
+            let pointer_over_sidebar = (sidebar_shown(&self.sidebar, self.top_layout)
+                && pointer_pos.map(|p| p.x <= self.sidebar.width).unwrap_or(false))
+                || pointer_over_floating;
 
             let pointer_in_viewport = pointer_pos
                 .map(|p| p - canvas_rect.min)
@@ -2209,7 +2275,7 @@ impl KiteApp {
                     tab.viewport
                         .apply_pan_delta(drag_delta, viewport_size, pages);
                     tab.viewport.last_gesture_label =
-                        "Panoramique 1 doigt (Trackpad Drag)".to_string();
+                        crate::i18n::tr("Panoramique 1 doigt (Trackpad Drag)", "One-finger pan (trackpad drag)").to_string();
                 }
             }
 
@@ -2350,6 +2416,17 @@ impl KiteApp {
                     i.key_down(Key::Space),
                 )
             });
+
+        // Clic droit sur le texte sélectionné de cette page : copier ou demander à l'assistant.
+        if ctx.input(|i| i.pointer.secondary_released()) {
+            let on_selection = self.tabs.get(self.active_tab).is_some_and(|tab| {
+                tab.text_selection.has_selection() && tab.text_selection.page_index == Some(page_index)
+            });
+            if let Some(pos) = hover_pos.filter(|p| on_selection && page_rect.contains(*p)) {
+                self.selection_menu = Some((pos, self.frame_count));
+                return;
+            }
+        }
 
         if space_down || self.active_tool == ActiveTool::Pan {
             return;
@@ -2829,8 +2906,14 @@ impl KiteApp {
 }
 
 impl eframe::App for KiteApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Le proxy de confidentialité s'arrête avec Kite (l'objet tâche de Windows le ferait aussi).
+        crate::ai::privacy::shutdown();
+    }
+
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.frame_count += 1;
+        crate::i18n::set(self.prefs.language.resolve());
         self.text_field_focused_prev = std::mem::take(&mut self.text_field_focused_now);
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame_instant).as_secs_f32();
@@ -3005,14 +3088,14 @@ impl eframe::App for KiteApp {
                     painter.text(
                         canvas_rect.center() - Vec2::new(0.0, 14.0),
                         Align2::CENTER_CENTER,
-                        "Aucun PDF ouvert",
+                        crate::i18n::tr("Aucun PDF ouvert", "No PDF open"),
                         FontId::proportional(20.0),
                         Color32::from_rgb(170, 180, 200),
                     );
                     painter.text(
                         canvas_rect.center() + Vec2::new(0.0, 16.0),
                         Align2::CENTER_CENTER,
-                        "Ctrl+T : rouvrir un PDF récent      Ctrl+O : parcourir le disque",
+                        crate::i18n::tr("Ctrl+T : rouvrir un PDF récent      Ctrl+O : parcourir le disque", "Ctrl+T: reopen a recent PDF      Ctrl+O: browse the disk"),
                         FontId::proportional(13.0),
                         Color32::from_rgb(120, 130, 152),
                     );
@@ -3424,7 +3507,7 @@ impl eframe::App for KiteApp {
                                 if is_active_match {
                                     if let Some(first_b) = m.highlight_boxes.first() {
                                         let screen_b = first_b.to_screen_rect(page_rect, page_dim);
-                                        let where_found = if m.is_ocr { " · dans une image" } else { "" };
+                                        let where_found = if m.is_ocr { crate::i18n::tr(" · dans une image", " · in an image") } else { "" };
                                         let label = format!(
                                             "🔎 {} / {}{where_found}",
                                             m_idx + 1,
@@ -3527,6 +3610,7 @@ impl eframe::App for KiteApp {
                 self.render_save_error_popup(ctx);
                 self.render_dependency_warning(ctx, canvas_rect);
                 self.render_update_banner(ctx, canvas_rect);
+                self.render_ai(ctx, canvas_rect, &visible_pages_info);
                 self.render_settings(ctx);
                 self.render_help(ctx);
 
@@ -3552,6 +3636,14 @@ impl eframe::App for KiteApp {
                     self.render_command_palette(ctx, canvas_rect);
                 }
             });
+
+        // Un champ de saisie a le focus (assistant, clé API des Réglages...) : les lettres lui appartiennent,
+        // pas aux raccourcis à une touche. Seul un champ de texte compte, pas un bouton atteint avec Tab.
+        if let Some(id) = ctx.memory(|m| m.focused()) {
+            if egui::text_edit::TextEditState::load(ctx, id).is_some() {
+                self.text_field_focused_now = true;
+            }
+        }
 
         if self.automation.screenshot_output.is_some() {
             let waiting_for_pages = self.workers.is_render_busy()
@@ -3861,8 +3953,8 @@ impl KiteApp {
                     );
                     let replies_text = match annot.meta.replies.len() {
                         0 => String::new(),
-                        1 => "1 réponse".to_string(),
-                        n => format!("{n} réponses"),
+                        1 => crate::i18n::tr("1 réponse", "1 reply").to_string(),
+                        n => crate::trf!("{n} réponses", "{n} replies"),
                     };
                     let replies = painter.layout_no_wrap(
                         replies_text,
@@ -4123,7 +4215,7 @@ impl KiteApp {
                         .frame(false)
                         .font(font)
                         .text_color(text_color)
-                        .hint_text("Saisissez votre texte...")
+                        .hint_text(crate::i18n::tr("Saisissez votre texte...", "Type your text..."))
                         .margin(egui::vec2(6.0 * scale_x, 4.0 * scale_y)),
                 );
                 if focus_now {
@@ -4280,10 +4372,10 @@ impl KiteApp {
                                 );
                             }
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button("✖").on_hover_text("Fermer").clicked() {
+                                if ui.small_button("✖").on_hover_text(crate::i18n::tr("Fermer", "Close")).clicked() {
                                     close_panel = true;
                                 }
-                                let more = ui.small_button("…").on_hover_text("Options");
+                                let more = ui.small_button("…").on_hover_text(crate::i18n::tr("Options", "Options"));
                                 if more.clicked() {
                                     open_menu_at = Some(more.rect.left_bottom());
                                 }
@@ -4307,12 +4399,12 @@ impl KiteApp {
                                 egui::TextEdit::multiline(&mut main_text)
                                     .desired_rows(2)
                                     .desired_width(f32::INFINITY)
-                                    .hint_text("Saisissez votre commentaire..."),
+                                    .hint_text(crate::i18n::tr("Saisissez votre commentaire...", "Type your comment...")),
                             );
                             if focus_edit {
                                 field.request_focus();
                             }
-                            if ui.small_button("Terminer").clicked() {
+                            if ui.small_button(crate::i18n::tr("Terminer", "Done")).clicked() {
                                 finish_edit = true;
                             }
                         } else {
@@ -4338,7 +4430,7 @@ impl KiteApp {
                                     if focus_edit {
                                         field.request_focus();
                                     }
-                                    if ui.small_button("Terminer").clicked() {
+                                    if ui.small_button(crate::i18n::tr("Terminer", "Done")).clicked() {
                                         finish_edit = true;
                                     }
                                 }
@@ -4348,11 +4440,11 @@ impl KiteApp {
                                         start_edit = Some(CommentEditTarget::Reply(index));
                                     }
                                     label.context_menu(|ui| {
-                                        if ui.button("Modifier").clicked() {
+                                        if ui.button(crate::i18n::tr("Modifier", "Edit")).clicked() {
                                             start_edit = Some(CommentEditTarget::Reply(index));
                                             ui.close_menu();
                                         }
-                                        if ui.button("Supprimer").clicked() {
+                                        if ui.button(crate::i18n::tr("Supprimer", "Delete")).clicked() {
                                             delete_reply = Some(index);
                                             ui.close_menu();
                                         }
@@ -4372,7 +4464,7 @@ impl KiteApp {
                             let field = ui.add(
                                 egui::TextEdit::singleline(&mut draft)
                                     .desired_width(COMMENT_PANEL_WIDTH - 96.0)
-                                    .hint_text("Ajouter une réponse"),
+                                    .hint_text(crate::i18n::tr("Ajouter une réponse", "Add a reply")),
                             );
                             if focus_reply {
                                 field.request_focus();
@@ -4381,7 +4473,7 @@ impl KiteApp {
                             let pressed_enter =
                                 field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                             let can_send = !draft.trim().is_empty();
-                            if ui.add_enabled(can_send, egui::Button::new("Répondre").small()).clicked()
+                            if ui.add_enabled(can_send, egui::Button::new(crate::i18n::tr("Répondre", "Reply")).small()).clicked()
                                 || (pressed_enter && can_send)
                             {
                                 send_reply = true;
@@ -4483,15 +4575,15 @@ impl KiteApp {
             return;
         };
         let mut dismissed = false;
-        egui::Window::new("Enregistrement impossible")
+        egui::Window::new(crate::i18n::tr("Enregistrement impossible", "Cannot save"))
             .collapsible(false)
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .order(Order::Tooltip)
             .show(ctx, |ui| {
                 ui.set_max_width(460.0);
-                ui.label("Le fichier n'a pas été enregistré (Ctrl+S). Vos annotations sont toujours là.");
-                ui.label("Il est probablement ouvert dans une autre application, comme Acrobat. Fermez-le là-bas puis réessayez.");
+                ui.label(crate::i18n::tr("Le fichier n'a pas été enregistré (Ctrl+S). Vos annotations sont toujours là.", "The file was not saved (Ctrl+S). Your annotations are still here."));
+                ui.label(crate::i18n::tr("Il est probablement ouvert dans une autre application, comme Acrobat. Fermez-le là-bas puis réessayez.", "It is probably open in another application, such as Acrobat. Close it there, then try again."));
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new(reason).size(11.0).weak());
                 ui.add_space(6.0);
@@ -4586,56 +4678,56 @@ impl KiteApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     if is_note {
-                        if ui.add_enabled(!annot.is_empty_comment(), egui::Button::new("Répondre")).clicked() {
+                        if ui.add_enabled(!annot.is_empty_comment(), egui::Button::new(crate::i18n::tr("Répondre", "Reply"))).clicked() {
                             reply_requested = true;
                         }
-                        if ui.button("Modifier le commentaire").clicked() {
+                        if ui.button(crate::i18n::tr("Modifier le commentaire", "Edit the comment")).clicked() {
                             edit_requested = true;
                         }
-                        if ui.button("Supprimer").clicked() {
+                        if ui.button(crate::i18n::tr("Supprimer", "Delete")).clicked() {
                             delete_requested = true;
                         }
                         ui.separator();
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("État").size(11.0));
+                            ui.label(egui::RichText::new(crate::i18n::tr("État", "Status")).size(11.0));
                             for (value, label) in REVIEW_STATES {
-                                if ui.selectable_label(current_state == value, label).clicked() {
+                                if ui.selectable_label(current_state == value, crate::i18n::label(label)).clicked() {
                                     new_state = Some(value);
                                 }
                             }
                         });
                     }
                     if is_highlight {
-                        if ui.button("Ajouter un commentaire").clicked() {
+                        if ui.button(crate::i18n::tr("Ajouter un commentaire", "Add a comment")).clicked() {
                             comment_requested = true;
                         }
-                        if ui.button("Supprimer").clicked() {
+                        if ui.button(crate::i18n::tr("Supprimer", "Delete")).clicked() {
                             delete_requested = true;
                         }
                         ui.separator();
                     }
                     if let Some((font_size, fill, border)) = block_style {
-                        new_fill = color_choice_row(ui, "Fond", fill, &FREETEXT_FILL_CHOICES);
-                        new_border = color_choice_row(ui, "Contour", border, &FREETEXT_BORDER_CHOICES);
+                        new_fill = color_choice_row(ui, crate::i18n::tr("Fond", "Fill"), fill, &FREETEXT_FILL_CHOICES);
+                        new_border = color_choice_row(ui, crate::i18n::tr("Contour", "Border"), border, &FREETEXT_BORDER_CHOICES);
                         new_size = font_size_row(ui, font_size);
                     }
                     if arrow_heads.is_some() || is_note || is_highlight {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Couleur").size(11.0));
+                            ui.label(egui::RichText::new(crate::i18n::tr("Couleur", "Color")).size(11.0));
                             for (name, rgb) in PALETTE_COLORS {
                                 let swatch =
                                     egui::Button::new(if annot.color_rgb == rgb { "✔" } else { " " })
                                         .fill(Color32::from_rgb(rgb.0, rgb.1, rgb.2))
                                         .min_size(Vec2::new(22.0, 16.0));
-                                if ui.add(swatch).on_hover_text(name).clicked() {
+                                if ui.add(swatch).on_hover_text(crate::i18n::label(name)).clicked() {
                                     new_color = Some(rgb);
                                 }
                             }
                         });
                     }
                     if let Some((start_head, end_head)) = arrow_heads {
-                        new_start = ending_row(ui, "Début", start_head);
-                        new_end = ending_row(ui, "Fin    ", end_head);
+                        new_start = ending_row(ui, crate::i18n::tr("Début", "Start"), start_head);
+                        new_end = ending_row(ui, crate::i18n::tr("Fin    ", "End    "), end_head);
                     }
                 });
             });
@@ -4767,7 +4859,7 @@ impl KiteApp {
                             );
 
                             let edit = egui::TextEdit::singleline(&mut self.search_bar.query)
-                                .hint_text("Rechercher dans le PDF (Ctrl+F)...")
+                                .hint_text(crate::i18n::tr("Rechercher dans le PDF (Ctrl+F)...", "Search in the PDF (Ctrl+F)..."))
                                 .desired_width(185.0);
                             let resp = ui.add(edit);
                             self.text_field_focused_now |= resp.has_focus();
@@ -4801,21 +4893,21 @@ impl KiteApp {
 
                             if ui
                                 .add_enabled(total > 0, egui::Button::new("◀").small())
-                                .on_hover_text("Résultat précédent (Maj+Entrée)")
+                                .on_hover_text(crate::i18n::tr("Résultat précédent (Maj+Entrée)", "Previous result (Shift+Enter)"))
                                 .clicked()
                             {
                                 step_dir = -1;
                             }
                             if ui
                                 .add_enabled(total > 0, egui::Button::new("▶").small())
-                                .on_hover_text("Résultat suivant (Entrée)")
+                                .on_hover_text(crate::i18n::tr("Résultat suivant (Entrée)", "Next result (Enter)"))
                                 .clicked()
                             {
                                 step_dir = 1;
                             }
                             if ui
                                 .small_button("✖")
-                                .on_hover_text("Fermer la recherche (Échap)")
+                                .on_hover_text(crate::i18n::tr("Fermer la recherche (Échap)", "Close search (Esc)"))
                                 .clicked()
                             {
                                 close_search = true;
@@ -4824,8 +4916,8 @@ impl KiteApp {
                         match &ocr_hint {
                             Some(SearchOcrHint::Running { done, total }) => {
                                 ui.label(
-                                    egui::RichText::new(format!(
-                                        "OCR approfondi en cours : {done} / {total} pages. Les résultats s'ajoutent au fur et à mesure."
+                                    egui::RichText::new(crate::trf!(
+                                        "OCR approfondi en cours : {done} / {total} pages. Les résultats s'ajoutent au fur et à mesure.", "Deep OCR running: {done} / {total} pages. Results are added as they come."
                                     ))
                                     .size(11.0)
                                     .color(Color32::from_rgb(150, 160, 182)),
@@ -4834,15 +4926,15 @@ impl KiteApp {
                             Some(SearchOcrHint::PagesWithoutText(count)) => {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(
-                                        egui::RichText::new(format!(
-                                            "{count} page{} sans texte lisible.",
+                                        egui::RichText::new(crate::trf!(
+                                            "{count} page{} sans texte lisible.", "{count} page{} without readable text.",
                                             if *count > 1 { "s" } else { "" }
                                         ))
                                         .size(11.0)
                                         .color(Color32::from_rgb(150, 160, 182)),
                                     );
                                     if ui
-                                        .link(egui::RichText::new("Lancer l'OCR approfondi…").size(11.0))
+                                        .link(egui::RichText::new(crate::i18n::tr("Lancer l'OCR approfondi…", "Run deep OCR…")).size(11.0))
                                         .clicked()
                                     {
                                         open_ocr_dialog = true;
@@ -4915,25 +5007,25 @@ impl KiteApp {
                     ui.label(egui::RichText::new("PDF").size(15.0).color(Color32::from_rgb(140, 150, 170)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let pin_label = if self.sidebar.pinned {
-                            "📌 Épinglée"
+                            crate::i18n::tr("📌 Épinglée", "📌 Pinned")
                         } else {
-                            "👁 Survol"
+                            crate::i18n::tr("👁 Survol", "👁 On hover")
                         };
                         if ui
                             .small_button(pin_label)
-                            .on_hover_text("Garder la barre ouverte, ou la masquer et la faire apparaître au bord gauche (Ctrl+B)")
+                            .on_hover_text(crate::i18n::tr("Garder la barre ouverte, ou la masquer et la faire apparaître au bord gauche (Ctrl+B)", "Keep the sidebar open, or hide it and show it at the left edge (Ctrl+B)"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::ToggleSidebarPin);
                         }
 
-                        if ui.small_button("⚙").on_hover_text("Réglages (Ctrl+,)").clicked() {
+                        if ui.small_button("⚙").on_hover_text(crate::i18n::tr("Réglages (Ctrl+,)", "Settings (Ctrl+,)")).clicked() {
                             self.settings_open = true;
                         }
 
                         if ui
                             .small_button("🔎")
-                            .on_hover_text("Chercher un mot dans le PDF (Ctrl+F)")
+                            .on_hover_text(crate::i18n::tr("Chercher un mot dans le PDF (Ctrl+F)", "Find a word in the PDF (Ctrl+F)"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::OpenSearch);
@@ -4946,7 +5038,7 @@ impl KiteApp {
 
                 // Ouvre la barre centrale (Ctrl+T)
                 let search_btn = egui::Button::new(
-                    egui::RichText::new("🔍 PDF récent, outil, page…   Ctrl+T")
+                    egui::RichText::new(crate::i18n::tr("🔍 PDF récent, outil, page…   Ctrl+T", "🔍 Recent PDF, tool, page…   Ctrl+T"))
                         .size(11.5)
                         .color(Color32::from_rgb(175, 185, 208)),
                 )
@@ -4963,7 +5055,7 @@ impl KiteApp {
                 // 2. Grille d'outils compacts (2 lignes x 4 colonnes) + Actions Annotations ISO 32000
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("OUTILS")
+                        egui::RichText::new(crate::i18n::tr("OUTILS", "TOOLS"))
                             .size(10.0)
                             .strong()
                             .color(Color32::from_rgb(120, 132, 158)),
@@ -4972,7 +5064,7 @@ impl KiteApp {
                         if ui
                             .small_button("💾 Ctrl+S")
                             .on_hover_text(
-                                "Enregistrer les annotations au format standard ISO 32000 dans le PDF",
+                                crate::i18n::tr("Enregistrer les annotations au format standard ISO 32000 dans le PDF", "Save the annotations into the PDF in the ISO 32000 standard format"),
                             )
                             .clicked()
                         {
@@ -4980,14 +5072,14 @@ impl KiteApp {
                         }
                         if ui
                             .small_button("↪")
-                            .on_hover_text("Rétablir (Ctrl+Y)")
+                            .on_hover_text(crate::i18n::tr("Rétablir (Ctrl+Y)", "Redo (Ctrl+Y)"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::RedoAnnotation);
                         }
                         if ui
                             .small_button("↩")
-                            .on_hover_text("Annuler (Ctrl+Z)")
+                            .on_hover_text(crate::i18n::tr("Annuler (Ctrl+Z)", "Undo (Ctrl+Z)"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::UndoAnnotation);
@@ -5029,7 +5121,7 @@ impl KiteApp {
 
                             if ui
                                 .add(btn)
-                                .on_hover_text(format!("{label} (touche {shortcut})"))
+                                .on_hover_text(crate::trf!("{label} (touche {shortcut})", "{label} (key {shortcut})"))
                                 .clicked()
                             {
                                 self.active_tool = *tool;
@@ -5047,24 +5139,24 @@ impl KiteApp {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .small_button("➕")
-                            .on_hover_text("Rouvrir un PDF de l'historique (Ctrl+T)")
+                            .on_hover_text(crate::i18n::tr("Rouvrir un PDF de l'historique (Ctrl+T)", "Reopen a PDF from the history (Ctrl+T)"))
                             .clicked()
                         {
                             self.command_palette.open();
                         }
                         if ui
                             .small_button("📂")
-                            .on_hover_text("Ouvrir un fichier PDF (Ctrl+O)")
+                            .on_hover_text(crate::i18n::tr("Ouvrir un fichier PDF (Ctrl+O)", "Open a PDF file (Ctrl+O)"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::OpenFileDialog);
                         }
-                        let outline_button = egui::Button::new(egui::RichText::new("☰ Sommaire").size(11.0))
+                        let outline_button = egui::Button::new(egui::RichText::new(crate::i18n::tr("☰ Sommaire", "☰ Contents")).size(11.0))
                             .small()
                             .selected(self.outline_open);
                         if ui
                             .add_enabled(!self.tabs.is_empty(), outline_button)
-                            .on_hover_text("Sommaire du document (signets)")
+                            .on_hover_text(crate::i18n::tr("Sommaire du document (signets)", "Table of contents (bookmarks)"))
                             .clicked()
                         {
                             self.outline_open = !self.outline_open;
@@ -5119,7 +5211,7 @@ impl KiteApp {
                                     |ui| {
                                         if ui
                                             .small_button("✖")
-                                            .on_hover_text("Fermer cet onglet (Ctrl+W)")
+                                            .on_hover_text(crate::i18n::tr("Fermer cet onglet (Ctrl+W)", "Close this tab (Ctrl+W)"))
                                             .clicked()
                                         {
                                             tab_to_close = Some(idx);
@@ -5239,7 +5331,7 @@ impl KiteApp {
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(current_page > 1, egui::Button::new("◀").small())
-                        .on_hover_text("Page précédente")
+                        .on_hover_text(crate::i18n::tr("Page précédente", "Previous page"))
                         .clicked()
                     {
                         tab.viewport.jump_to_page(current_page - 2, viewport_size, &pages);
@@ -5251,14 +5343,14 @@ impl KiteApp {
                     );
                     if ui
                         .add_enabled(current_page < page_count, egui::Button::new("▶").small())
-                        .on_hover_text("Page suivante")
+                        .on_hover_text(crate::i18n::tr("Page suivante", "Next page"))
                         .clicked()
                     {
                         tab.viewport.jump_to_page(current_page, viewport_size, &pages);
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("+").on_hover_text("Zoom avant").clicked() {
+                        if ui.small_button("+").on_hover_text(crate::i18n::tr("Zoom avant", "Zoom in")).clicked() {
                             tab.viewport.apply_zoom_around_anchor(
                                 1.2,
                                 viewport_size * 0.5,
@@ -5274,12 +5366,12 @@ impl KiteApp {
                                 )
                                 .frame(false),
                             )
-                            .on_hover_text("Revenir à 100 %")
+                            .on_hover_text(crate::i18n::tr("Revenir à 100 %", "Back to 100%"))
                             .clicked()
                         {
                             pending_cmd = Some(PaletteCommand::ZoomReset100);
                         }
-                        if ui.small_button("−").on_hover_text("Zoom arrière").clicked() {
+                        if ui.small_button("−").on_hover_text(crate::i18n::tr("Zoom arrière", "Zoom out")).clicked() {
                             tab.viewport.apply_zoom_around_anchor(
                                 1.0 / 1.2,
                                 viewport_size * 0.5,
@@ -5293,15 +5385,15 @@ impl KiteApp {
                 ui.horizontal(|ui| {
                     let half = (ui.available_width() - ui.spacing().item_spacing.x) * 0.5;
                     if ui
-                        .add_sized([half, 20.0], egui::Button::new("↔ Largeur"))
-                        .on_hover_text("Ajuster à la largeur (Ctrl+9)")
+                        .add_sized([half, 20.0], egui::Button::new(crate::i18n::tr("↔ Largeur", "↔ Width")))
+                        .on_hover_text(crate::i18n::tr("Ajuster à la largeur (Ctrl+9)", "Fit width (Ctrl+9)"))
                         .clicked()
                     {
                         pending_cmd = Some(PaletteCommand::FitToWidth);
                     }
                     if ui
-                        .add_sized([half, 20.0], egui::Button::new("↕ Page entière"))
-                        .on_hover_text("Afficher la page entière (Ctrl+0)")
+                        .add_sized([half, 20.0], egui::Button::new(crate::i18n::tr("↕ Page entière", "↕ Whole page")))
+                        .on_hover_text(crate::i18n::tr("Afficher la page entière (Ctrl+0)", "Show the whole page (Ctrl+0)"))
                         .clicked()
                     {
                         pending_cmd = Some(PaletteCommand::FitToPage);
@@ -5367,8 +5459,8 @@ impl KiteApp {
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
                                             if ui
-                                                .small_button("🗑 Suppr")
-                                                .on_hover_text("Supprimer l'annotation (Touche Suppr)")
+                                                .small_button(crate::i18n::tr("🗑 Suppr", "🗑 Del"))
+                                                .on_hover_text(crate::i18n::tr("Supprimer l'annotation (Touche Suppr)", "Delete the annotation (Del key)"))
                                                 .clicked()
                                             {
                                                 delete_clicked = true;
@@ -5384,21 +5476,21 @@ impl KiteApp {
                                     ..
                                 } = &annot.kind
                                 {
-                                    picked_fill = color_choice_row(ui, "Fond", *fill_rgb, &FREETEXT_FILL_CHOICES);
+                                    picked_fill = color_choice_row(ui, crate::i18n::tr("Fond", "Fill"), *fill_rgb, &FREETEXT_FILL_CHOICES);
                                     picked_border =
-                                        color_choice_row(ui, "Contour", *border_rgb, &FREETEXT_BORDER_CHOICES);
+                                        color_choice_row(ui, crate::i18n::tr("Contour", "Border"), *border_rgb, &FREETEXT_BORDER_CHOICES);
                                     picked_size = font_size_row(ui, *font_size);
                                 } else {
                                     // Sélecteur de couleur rapide
                                     ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Couleur :").size(10.5));
+                                        ui.label(egui::RichText::new(crate::i18n::tr("Couleur :", "Color:")).size(10.5));
                                         for (cname, crgb) in PALETTE_COLORS {
                                             let c32 = Color32::from_rgb(crgb.0, crgb.1, crgb.2);
                                             let is_curr = annot.color_rgb == crgb;
                                             let btn = egui::Button::new(if is_curr { "✔" } else { " " })
                                                 .fill(c32)
                                                 .min_size(Vec2::new(22.0, 16.0));
-                                            if ui.add(btn).on_hover_text(cname).clicked() {
+                                            if ui.add(btn).on_hover_text(crate::i18n::label(cname)).clicked() {
                                                 annot.color_rgb = crgb;
                                             }
                                         }
@@ -5459,8 +5551,8 @@ impl KiteApp {
                     .inner_margin(Margin::symmetric(10, 4))
                     .show(ui, |ui| {
                         ui.label(
-                            egui::RichText::new(format!(
-                                "🔎 RÉSULTATS CTRL+F ({})",
+                            egui::RichText::new(crate::trf!(
+                                "🔎 RÉSULTATS CTRL+F ({})", "🔎 CTRL+F RESULTS ({})",
                                 self.search_bar.matches.len()
                             ))
                             .size(10.5)
@@ -5483,7 +5575,7 @@ impl KiteApp {
                                         .corner_radius(CornerRadius::same(5))
                                         .inner_margin(Margin::symmetric(6, 3))
                                         .show(ui, |ui| {
-                                            let ocr_tag = if m.is_ocr { " · image" } else { "" };
+                                            let ocr_tag = if m.is_ocr { crate::i18n::tr(" · image", " · image") } else { "" };
                                             let btn = egui::Button::new(
                                                 egui::RichText::new(format!(
                                                     "p. {}{} : {}",
@@ -5540,10 +5632,10 @@ impl KiteApp {
             return None;
         }
         if installing {
-            return Some(("Installation de la lecture des images".to_string(), None, true));
+            return Some((crate::i18n::tr("Installation de la lecture des images", "Installing image reading").to_string(), None, true));
         }
         if let Some(reason) = &tab.ocr.unavailable_reason {
-            return Some(("Lecture des images indisponible".to_string(), Some(reason.clone()), false));
+            return Some((crate::i18n::tr("Lecture des images indisponible", "Image reading unavailable").to_string(), Some(reason.clone()), false));
         }
         // Affiché tant qu'il reste des pages, pas seulement pendant le calcul : en mode éco, l'OCR se
         // repose entre deux pages, et la ligne disparaissait puis réapparaissait.
@@ -5552,8 +5644,8 @@ impl KiteApp {
                 self.last_image_ocr_page = Some((tab.id, page));
             }
             let label = match self.last_image_ocr_page {
-                Some((tab_id, page)) if tab_id == tab.id => format!("Lecture des images, page {}", page + 1),
-                _ => "Lecture des images…".to_string(),
+                Some((tab_id, page)) if tab_id == tab.id => crate::trf!("Lecture des images, page {}", "Reading images, page {}", page + 1),
+                _ => crate::i18n::tr("Lecture des images…", "Reading images…").to_string(),
             };
             return Some((label, None, true));
         }
@@ -5633,7 +5725,7 @@ impl KiteApp {
             let popup_id = ui.make_persistent_id("kite_tabs_popup");
             let popup_open = ui.memory(|m| m.is_popup_open(popup_id));
             let (rect, response) = ui.allocate_exact_size(Vec2::new(tabs_width, 30.0), Sense::click());
-            let response = response.on_hover_text("Onglets ouverts (Ctrl+Tab : onglet suivant)");
+            let response = response.on_hover_text(crate::i18n::tr("Onglets ouverts (Ctrl+Tab : onglet suivant)", "Open tabs (Ctrl+Tab: next tab)"));
             let active = self.tabs.get(self.active_tab);
             let accent = active.map(|t| t.badge_color).unwrap_or(Color32::from_rgb(80, 120, 220));
             let fill = if popup_open || response.hovered() {
@@ -5652,7 +5744,7 @@ impl KiteApp {
             );
             let title = match active {
                 Some(tab) => format!("{}{}", tab.title, if tab.is_modified { " *" } else { "" }),
-                None => "Aucun PDF ouvert".to_string(),
+                None => crate::i18n::tr("Aucun PDF ouvert", "No PDF open").to_string(),
             };
             let mut job = egui::text::LayoutJob::single_section(
                 title,
@@ -5732,7 +5824,7 @@ impl KiteApp {
                                     tab_to_select = Some(idx);
                                 }
                                 row.context_menu(|ui| tab_context_menu(ui, idx, tab, &mut tab_menu_action));
-                                if ui.small_button("✖").on_hover_text("Fermer cet onglet (Ctrl+W)").clicked() {
+                                if ui.small_button("✖").on_hover_text(crate::i18n::tr("Fermer cet onglet (Ctrl+W)", "Close this tab (Ctrl+W)")).clicked() {
                                     tab_to_close = Some(idx);
                                 }
                             });
@@ -5741,11 +5833,11 @@ impl KiteApp {
                     if has_tabs {
                         ui.separator();
                     }
-                    if ui.button("Ouvrir un PDF…   Ctrl+O").clicked() {
+                    if ui.button(crate::i18n::tr("Ouvrir un PDF…   Ctrl+O", "Open a PDF…   Ctrl+O")).clicked() {
                         pending_cmd = Some(PaletteCommand::OpenFileDialog);
                         ui.memory_mut(|m| m.close_popup());
                     }
-                    if ui.button("Rouvrir un PDF récent…   Ctrl+T").clicked() {
+                    if ui.button(crate::i18n::tr("Rouvrir un PDF récent…   Ctrl+T", "Reopen a recent PDF…   Ctrl+T")).clicked() {
                         self.command_palette.open();
                         ui.memory_mut(|m| m.close_popup());
                     }
@@ -5763,7 +5855,7 @@ impl KiteApp {
                     let (icon, label, shortcut) = tool.icon_and_label();
                     if ui
                         .add(icon_button(icon, self.active_tool == *tool))
-                        .on_hover_text(format!("{label} (touche {shortcut})"))
+                        .on_hover_text(crate::trf!("{label} (touche {shortcut})", "{label} (key {shortcut})"))
                         .clicked()
                     {
                         self.active_tool = *tool;
@@ -5774,7 +5866,7 @@ impl KiteApp {
                 let tools_popup = ui.make_persistent_id("kite_tools_popup");
                 let response = ui
                     .add(icon_button(&format!("{icon} ⏷"), true).min_size(Vec2::new(52.0, button.y)))
-                    .on_hover_text("Outil");
+                    .on_hover_text(crate::i18n::tr("Outil", "Tool"));
                 if response.clicked() {
                     ui.memory_mut(|m| m.toggle_popup(tools_popup));
                 }
@@ -5799,15 +5891,15 @@ impl KiteApp {
             ui.separator();
 
             // Annuler, rétablir, enregistrer
-            if ui.add(icon_button("↩", false)).on_hover_text("Annuler (Ctrl+Z)").clicked() {
+            if ui.add(icon_button("↩", false)).on_hover_text(crate::i18n::tr("Annuler (Ctrl+Z)", "Undo (Ctrl+Z)")).clicked() {
                 pending_cmd = Some(PaletteCommand::UndoAnnotation);
             }
-            if ui.add(icon_button("↪", false)).on_hover_text("Rétablir (Ctrl+Y)").clicked() {
+            if ui.add(icon_button("↪", false)).on_hover_text(crate::i18n::tr("Rétablir (Ctrl+Y)", "Redo (Ctrl+Y)")).clicked() {
                 pending_cmd = Some(PaletteCommand::RedoAnnotation);
             }
             if ui
                 .add(icon_button("💾", false))
-                .on_hover_text("Enregistrer les annotations dans le PDF (Ctrl+S)")
+                .on_hover_text(crate::i18n::tr("Enregistrer les annotations dans le PDF (Ctrl+S)", "Save the annotations into the PDF (Ctrl+S)"))
                 .clicked()
             {
                 pending_cmd = Some(PaletteCommand::SaveAnnotatedPdf);
@@ -5815,19 +5907,19 @@ impl KiteApp {
 
             // À droite, de droite à gauche : réglages, recherche, sommaire, zoom, page.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(icon_button("⚙", false)).on_hover_text("Réglages (Ctrl+,)").clicked() {
+                if ui.add(icon_button("⚙", false)).on_hover_text(crate::i18n::tr("Réglages (Ctrl+,)", "Settings (Ctrl+,)")).clicked() {
                     self.settings_open = true;
                 }
                 if ui
                     .add(icon_button("🔎", self.search_bar.is_open))
-                    .on_hover_text("Chercher un mot dans le PDF (Ctrl+F)")
+                    .on_hover_text(crate::i18n::tr("Chercher un mot dans le PDF (Ctrl+F)", "Find a word in the PDF (Ctrl+F)"))
                     .clicked()
                 {
                     pending_cmd = Some(PaletteCommand::OpenSearch);
                 }
                 if ui
                     .add_enabled(has_tabs, icon_button("☰", self.outline_open))
-                    .on_hover_text("Sommaire du document")
+                    .on_hover_text(crate::i18n::tr("Sommaire du document", "Table of contents"))
                     .clicked()
                 {
                     self.outline_open = !self.outline_open;
@@ -5838,19 +5930,19 @@ impl KiteApp {
                 if full_zoom {
                     if ui
                         .add_enabled(has_tabs, icon_button("↕", false))
-                        .on_hover_text("Page entière (Ctrl+0)")
+                        .on_hover_text(crate::i18n::tr("Page entière (Ctrl+0)", "Whole page (Ctrl+0)"))
                         .clicked()
                     {
                         pending_cmd = Some(PaletteCommand::FitToPage);
                     }
                     if ui
                         .add_enabled(has_tabs, icon_button("↔", false))
-                        .on_hover_text("Toute la largeur (Ctrl+9)")
+                        .on_hover_text(crate::i18n::tr("Toute la largeur (Ctrl+9)", "Fit width (Ctrl+9)"))
                         .clicked()
                     {
                         pending_cmd = Some(PaletteCommand::FitToWidth);
                     }
-                    if ui.add_enabled(has_tabs, icon_button("+", false)).on_hover_text("Zoom avant").clicked() {
+                    if ui.add_enabled(has_tabs, icon_button("+", false)).on_hover_text(crate::i18n::tr("Zoom avant", "Zoom in")).clicked() {
                         nav = Some(Nav::ZoomIn);
                     }
                     let label = egui::Button::new(egui::RichText::new(format!("{:.0} %", zoom * 100.0)).size(12.0))
@@ -5858,12 +5950,12 @@ impl KiteApp {
                     if ui
                         .add_enabled_ui(has_tabs, |ui| ui.add_sized([56.0, 28.0], label))
                         .inner
-                        .on_hover_text("Revenir à 100 %")
+                        .on_hover_text(crate::i18n::tr("Revenir à 100 %", "Back to 100%"))
                         .clicked()
                     {
                         pending_cmd = Some(PaletteCommand::ZoomReset100);
                     }
-                    if ui.add_enabled(has_tabs, icon_button("−", false)).on_hover_text("Zoom arrière").clicked() {
+                    if ui.add_enabled(has_tabs, icon_button("−", false)).on_hover_text(crate::i18n::tr("Zoom arrière", "Zoom out")).clicked() {
                         nav = Some(Nav::ZoomOut);
                     }
                 } else {
@@ -5876,19 +5968,19 @@ impl KiteApp {
                                 }
                                 clicked
                             };
-                            if entry(ui, "＋  Zoom avant") {
+                            if entry(ui, crate::i18n::tr("＋  Zoom avant", "＋  Zoom in")) {
                                 nav = Some(Nav::ZoomIn);
                             }
-                            if entry(ui, "−  Zoom arrière") {
+                            if entry(ui, crate::i18n::tr("−  Zoom arrière", "−  Zoom out")) {
                                 nav = Some(Nav::ZoomOut);
                             }
                             if entry(ui, "100 %") {
                                 pending_cmd = Some(PaletteCommand::ZoomReset100);
                             }
-                            if entry(ui, "↔  Toute la largeur   Ctrl+9") {
+                            if entry(ui, crate::i18n::tr("↔  Toute la largeur   Ctrl+9", "↔  Fit width   Ctrl+9")) {
                                 pending_cmd = Some(PaletteCommand::FitToWidth);
                             }
-                            if entry(ui, "↕  Page entière   Ctrl+0") {
+                            if entry(ui, crate::i18n::tr("↕  Page entière   Ctrl+0", "↕  Whole page   Ctrl+0")) {
                                 pending_cmd = Some(PaletteCommand::FitToPage);
                             }
                         });
@@ -5899,7 +5991,7 @@ impl KiteApp {
                 let (current, count) = page_info.map(|(c, n, _)| (c, n)).unwrap_or((0, 0));
                 if ui
                     .add_enabled(current < count, icon_button("▶", false))
-                    .on_hover_text("Page suivante")
+                    .on_hover_text(crate::i18n::tr("Page suivante", "Next page"))
                     .clicked()
                 {
                     nav = Some(Nav::Next);
@@ -5911,14 +6003,14 @@ impl KiteApp {
                 if ui
                     .add_enabled_ui(has_tabs, |ui| ui.add_sized([62.0, 28.0], page_label))
                     .inner
-                    .on_hover_text("Aller à une page : Ctrl+T, puis le numéro")
+                    .on_hover_text(crate::i18n::tr("Aller à une page : Ctrl+T, puis le numéro", "Go to a page: Ctrl+T, then the number"))
                     .clicked()
                 {
                     self.command_palette.open();
                 }
                 if ui
                     .add_enabled(current > 1, icon_button("◀", false))
-                    .on_hover_text("Page précédente")
+                    .on_hover_text(crate::i18n::tr("Page précédente", "Previous page"))
                     .clicked()
                 {
                     nav = Some(Nav::Previous);
@@ -6118,13 +6210,53 @@ impl KiteApp {
             });
     }
 
-    /// Page Réglages : applique et enregistre chaque changement.
-    fn render_settings(&mut self, ctx: &Context) {
-        if !self.settings_open {
-            self.confirm_clear_history = false;
+    /// Enregistre les préférences si elles ont changé.
+    fn store_prefs(&mut self, prefs: crate::settings::Preferences) {
+        if prefs != self.prefs {
+            self.prefs = prefs;
+            crate::i18n::set(self.prefs.language.resolve());
+            if let Some(settings) = &mut self.settings {
+                settings.prefs = self.prefs.clone();
+                settings.save();
+            }
+        }
+    }
+
+    /// Lit en tâche de fond la liste des modèles du fournisseur d'IA choisi.
+    fn refresh_ai_models(&mut self, ctx: &Context) {
+        use crate::settings_page::ModelList;
+        let provider = self.prefs.ai.provider;
+        let key = crate::ai::keystore::load(provider);
+        if key.is_none() && crate::ai::key_required(provider) {
+            self.ai_models = ModelList::Unknown;
+            self.ai_models_rx = None;
             return;
         }
-        use crate::settings_page::{Action, OcrStatus, PageInfo};
+        let url = crate::ai::base_url(provider, &self.prefs.ai.custom_url);
+        self.ai_models = ModelList::Loading;
+        self.ai_models_rx = Some((provider, crate::ai::net::fetch_models(provider, url, key, ctx.clone())));
+    }
+
+    fn poll_ai_models(&mut self) {
+        use crate::settings_page::ModelList;
+        let Some((provider, rx)) = &self.ai_models_rx else { return };
+        let Ok(result) = rx.try_recv() else { return };
+        if *provider == self.prefs.ai.provider {
+            self.ai_models = match result {
+                Ok(models) => ModelList::Loaded(models),
+                Err(error) => ModelList::Failed(error.lines().next().unwrap_or_default().to_string()),
+            };
+        }
+        self.ai_models_rx = None;
+    }
+
+    /// Page Réglages : applique et enregistre chaque changement.
+    fn render_settings(&mut self, ctx: &Context) {
+        self.poll_ai_models();
+        if !self.settings_open {
+            return;
+        }
+        use crate::settings_page::{Action, ModelList, OcrStatus, PageInfo, Section};
         let ocr = if self.ocr_install.is_some() {
             OcrStatus::Downloading
         } else if crate::deps::missing().iter().any(|d| !d.required) {
@@ -6132,30 +6264,36 @@ impl KiteApp {
         } else {
             OcrStatus::Installed
         };
+        let key_saved = self.ai.key_saved(self.prefs.ai.provider);
+        // Rubrique de l'assistant ouverte : liste des modèles lue une fois.
+        if self.settings_page.section == Section::Assistant
+            && self.ai_models == ModelList::Unknown
+            && self.ai_models_rx.is_none()
+            && (key_saved || !crate::ai::key_required(self.prefs.ai.provider))
+            && self.automation.screenshot_output.is_none()
+        {
+            self.refresh_ai_models(ctx);
+        }
         let info = PageInfo {
             ocr,
             history_len: self.recent_files.items.len(),
-            confirm_clear_history: self.confirm_clear_history,
             update_check: crate::updates::manual_status(),
+            ai_key_saved: key_saved,
+            ai_saved_keys: self.ai.saved_keys(),
+            ai_models: self.ai_models.clone(),
+            ai_conversations: if self.settings_page.section == Section::Assistant { self.ai.conversation_count() } else { 0 },
         };
         let mut prefs = self.prefs.clone();
-        let actions = crate::settings_page::show(ctx, &mut prefs, &info);
-        if prefs != self.prefs {
-            self.prefs = prefs;
-            if let Some(settings) = &mut self.settings {
-                settings.prefs = self.prefs.clone();
-                settings.save();
-            }
+        let actions = crate::settings_page::show(ctx, &mut prefs, &mut self.settings_page, &info);
+        if prefs.ai.provider != self.prefs.ai.provider || prefs.ai.custom_url != self.prefs.ai.custom_url {
+            self.ai_models = ModelList::Unknown;
+            self.ai_models_rx = None;
         }
+        self.store_prefs(prefs);
         for action in actions {
             match action {
                 Action::Close => self.settings_open = false,
-                Action::AskClearHistory => self.confirm_clear_history = true,
-                Action::CancelClearHistory => self.confirm_clear_history = false,
-                Action::ConfirmClearHistory => {
-                    self.recent_files.clear();
-                    self.confirm_clear_history = false;
-                }
+                Action::ConfirmClearHistory => self.recent_files.clear(),
                 Action::InstallOcr => {
                     let missing: Vec<_> = crate::deps::missing().into_iter().filter(|d| !d.required).collect();
                     if self.ocr_install.is_none() && !missing.is_empty() {
@@ -6183,6 +6321,346 @@ impl KiteApp {
                     self.settings_open = false;
                     self.welcome_open = true;
                 }
+                Action::SaveApiKey => {
+                    let provider = self.prefs.ai.provider;
+                    let key = std::mem::take(&mut self.settings_page.key_draft);
+                    if let Err(e) = crate::ai::keystore::save(provider, &key) {
+                        self.error_message = Some(crate::trf!("Clé non enregistrée : {}", "Key not saved: {}", e));
+                    }
+                    self.ai.forget_key_state();
+                    self.refresh_ai_models(ctx);
+                }
+                Action::DeleteApiKey => {
+                    crate::ai::keystore::delete(self.prefs.ai.provider);
+                    self.ai.forget_key_state();
+                    self.ai_models = ModelList::Unknown;
+                }
+                Action::RefreshModels => self.refresh_ai_models(ctx),
+                Action::ConfirmClearConversations => self.ai.clear_history(),
+                Action::InstallPrivacy => crate::ai::privacy::start_install(crate::i18n::is_en(), ctx.clone()),
+                Action::CancelPrivacyInstall => crate::ai::privacy::cancel_install(),
+                Action::UninstallPrivacy => {
+                    if let Err(e) = crate::ai::privacy::uninstall() {
+                        self.error_message = Some(crate::trf!("Désinstallation incomplète : {}", "Uninstall incomplete: {}", e));
+                    }
+                    let mut prefs = self.prefs.clone();
+                    prefs.ai.privacy_proxy = false;
+                    self.store_prefs(prefs);
+                }
+                Action::OpenPrivacyLog => {
+                    let log = if crate::ai::privacy::proxy_log().is_file() && !matches!(crate::ai::privacy::install_state(), crate::ai::privacy::InstallState::Failed(_)) {
+                        crate::ai::privacy::proxy_log()
+                    } else {
+                        crate::ai::privacy::install_log()
+                    };
+                    let _ = std::process::Command::new("notepad").arg(log).spawn();
+                }
+                Action::OpenAssistant => {
+                    self.settings_open = false;
+                    self.ai.open_and_focus();
+                }
+            }
+        }
+    }
+
+    /// Onglets ouverts, tels que l'assistant les voit.
+    fn ai_tab_infos(&self) -> Vec<crate::ai::panel::TabInfo> {
+        self.tabs
+            .iter()
+            .map(|tab| crate::ai::panel::TabInfo {
+                id: tab.id,
+                title: tab.title.clone(),
+                path: tab.path.clone(),
+                current_page: tab.viewport.current_page_index(self.canvas_size, &tab.page_dimensions),
+            })
+            .collect()
+    }
+
+    /// Documents sources d'une question : tailles des pages et texte déjà reconnu par l'OCR.
+    fn ai_source_specs(&self, ids: &[u64]) -> Vec<crate::ai::sources::SourceSpec> {
+        self.tabs
+            .iter()
+            .filter(|tab| ids.contains(&tab.id))
+            .map(|tab| {
+                let ocr_text = tab
+                    .text_layers
+                    .iter()
+                    .filter(|layer| layer.chars.iter().any(|c| c.is_ocr))
+                    .map(|layer| (layer.page_index, layer.chars.iter().map(|c| c.ch).collect::<String>()))
+                    .collect();
+                crate::ai::sources::SourceSpec {
+                    title: tab.title.clone(),
+                    path: tab.path.clone(),
+                    page_sizes: tab.page_dimensions.iter().map(|d| (d.width_pt, d.height_pt)).collect(),
+                    ocr_text,
+                    focus_page: tab.viewport.current_page_index(self.canvas_size, &tab.page_dimensions),
+                }
+            })
+            .collect()
+    }
+
+    /// Bouton rond, fenêtre de l'assistant, capture de zone et menu de la sélection.
+    fn render_ai(&mut self, ctx: &Context, canvas_rect: Rect, visible_pages: &[(usize, Rect)]) {
+        self.render_selection_menu(ctx);
+        if self.ai.capture_mode {
+            self.render_ai_capture(ctx, canvas_rect, visible_pages);
+        }
+        let tabs = self.ai_tab_infos();
+        let active = self.tabs.get(self.active_tab).map(|t| t.id);
+        let mut ai_prefs = self.prefs.ai.clone();
+        let actions = self.ai.show(ctx, canvas_rect, &tabs, active, &mut ai_prefs);
+        if ai_prefs != self.prefs.ai {
+            let mut prefs = self.prefs.clone();
+            prefs.ai = ai_prefs;
+            self.store_prefs(prefs);
+        }
+        use crate::ai::panel::PanelAction;
+        for action in actions {
+            match action {
+                PanelAction::StartCapture => {
+                    self.ai_capture_start = None;
+                    self.selection_menu = None;
+                }
+                PanelAction::OpenSettings => {
+                    self.settings_page.section = crate::settings_page::Section::Assistant;
+                    self.settings_open = true;
+                }
+                PanelAction::Send => {
+                    let ids = self.ai.source_ids(&tabs, active);
+                    let specs = self.ai_source_specs(&ids);
+                    let prefs = self.prefs.ai.clone();
+                    self.ai.send(specs, &prefs, ctx);
+                }
+                PanelAction::OpenCitation { path, page } => {
+                    let index = match self.tabs.iter().position(|t| t.path == path) {
+                        Some(index) => Some(index),
+                        None if path.exists() => {
+                            self.open_pdf_in_new_tab(&path);
+                            self.tabs.iter().position(|t| t.path == path)
+                        }
+                        None => None,
+                    };
+                    match index {
+                        Some(index) => {
+                            if index != self.active_tab {
+                                self.switch_to_tab(index);
+                            }
+                            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                                let target = page.saturating_sub(1).min(tab.page_dimensions.len().saturating_sub(1));
+                                tab.viewport.jump_to_page(target, self.canvas_size, &tab.page_dimensions);
+                            }
+                        }
+                        None => {
+                            self.error_message = Some(crate::trf!(
+                                "Document introuvable : {}",
+                                "Document not found: {}",
+                                path.display()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Tracé d'un rectangle sur la page : l'image de la zone et son texte sont joints à la question.
+    fn render_ai_capture(&mut self, ctx: &Context, canvas_rect: Rect, visible_pages: &[(usize, Rect)]) {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.ai.capture_mode = false;
+            self.ai_capture_start = None;
+            return;
+        }
+        let demo = self.automation.ai_demo == Some(AiDemo::Capture);
+        let area = egui::Area::new(egui::Id::new("kite_ai_capture"))
+            .order(Order::Middle)
+            .fixed_pos(canvas_rect.min)
+            .show(ctx, |ui| {
+                let (rect, response) = ui.allocate_exact_size(canvas_rect.size(), Sense::drag());
+                ui.painter().rect_filled(rect, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(10, 14, 30, 70));
+                ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+                // Consigne en haut de la zone du document.
+                let hint = crate::i18n::tr(
+                    "✂  Tracez un rectangle sur la page · Échap pour annuler",
+                    "✂  Draw a rectangle on the page · Esc to cancel",
+                );
+                let galley = ui.painter().layout_no_wrap(hint.into(), FontId::proportional(14.0), Color32::WHITE);
+                let pill = Rect::from_center_size(
+                    Pos2::new(rect.center().x, rect.top() + 34.0),
+                    galley.size() + Vec2::new(28.0, 14.0),
+                );
+                ui.painter().rect_filled(pill, CornerRadius::same(16), Color32::from_rgb(52, 80, 160));
+                ui.painter().galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+                if response.drag_started() {
+                    self.ai_capture_start = response.interact_pointer_pos();
+                }
+                let current = ui.input(|i| i.pointer.interact_pos());
+                let mut selection = match (self.ai_capture_start, current) {
+                    (Some(a), Some(b)) => Some(Rect::from_two_pos(a, b)),
+                    _ => None,
+                };
+                if demo {
+                    // Capture QA : rectangle en cours de tracé sur le haut de la première page visible.
+                    selection = visible_pages.first().map(|(_, r)| {
+                        Rect::from_min_size(r.min + Vec2::new(r.width() * 0.08, r.height() * 0.06), Vec2::new(r.width() * 0.84, r.height() * 0.2))
+                    });
+                }
+                if let Some(sel) = selection {
+                    ui.painter().rect_filled(sel, CornerRadius::same(2), Color32::from_rgba_unmultiplied(110, 150, 255, 40));
+                    ui.painter().rect_stroke(sel, CornerRadius::same(2), Stroke::new(2.0_f32, Color32::from_rgb(130, 170, 255)), StrokeKind::Outside);
+                }
+                (response.drag_stopped(), selection)
+            });
+        let (finished, selection) = area.inner;
+        if !finished {
+            return;
+        }
+        self.ai_capture_start = None;
+        let Some(selection) = selection.filter(|r| r.width() > 8.0 && r.height() > 8.0) else { return };
+        // Page qui contient le plus grand morceau du rectangle.
+        let area_of = |r: Rect| {
+            let i = r.intersect(selection);
+            if i.is_positive() { i.area() } else { 0.0 }
+        };
+        let Some(&(page, page_rect)) = visible_pages
+            .iter()
+            .filter(|(_, r)| area_of(*r) > 0.0)
+            .max_by(|a, b| area_of(a.1).total_cmp(&area_of(b.1)))
+        else {
+            return;
+        };
+        let zone = selection.intersect(page_rect);
+        let Some(tab) = self.tabs.get_mut(self.active_tab) else { return };
+        let Some(dim) = tab.page_dimensions.get(page).copied() else { return };
+        let pdf_rect = PdfTopDownRect::from_screen_rect(zone, page_rect, dim);
+        tab.ensure_page_text_layer(page, self.engine);
+        let zone_text = tab
+            .text_layers
+            .get(page)
+            .map(|layer| layer.select_in_rect(&pdf_rect).0)
+            .filter(|t| !t.trim().is_empty());
+        let Some(doc) = tab.document.as_ref() else { return };
+        // Assez de pixels pour que le texte reste lisible : environ 1600 pixels de large.
+        let scale = (1600.0 / pdf_rect.width().max(1.0)).clamp(2.0, 4.0);
+        let region = crate::pdf_engine::TileRegion {
+            x: (pdf_rect.x_min * scale) as i32,
+            y: (pdf_rect.y_min * scale) as i32,
+            width: ((pdf_rect.width() * scale) as i32).clamp(16, 2400),
+            height: ((pdf_rect.height() * scale) as i32).clamp(16, 2400),
+        };
+        let Ok(image) = doc.render_page_tile(page, scale, region) else { return };
+        let rgba: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+        let Some(png) = crate::ai::panel::png_from_rgba(image.size[0] as u32, image.size[1] as u32, rgba) else { return };
+        self.ai.capture_mode = false;
+        self.ai.add_image(crate::ai::history::ImageData {
+            png,
+            label: crate::trf!("Zone de la page {}", "Zone of page {}", page + 1),
+            zone_text,
+        });
+    }
+
+    /// Menu du clic droit sur une sélection : copier, ou demander à l'assistant.
+    fn render_selection_menu(&mut self, ctx: &Context) {
+        let Some((position, opened_on)) = self.selection_menu else { return };
+        let Some(tab) = self.tabs.get(self.active_tab) else {
+            self.selection_menu = None;
+            return;
+        };
+        if !tab.text_selection.has_selection() {
+            self.selection_menu = None;
+            return;
+        }
+        let text = tab.text_selection.selected_text.clone();
+        let page = tab.text_selection.page_index.unwrap_or(0);
+        use crate::ai::panel::SelectionAsk;
+        use crate::i18n::tr;
+        let mut chosen: Option<Option<SelectionAsk>> = None;
+        let area = egui::Area::new(egui::Id::new("kite_selection_menu"))
+            .order(Order::Foreground)
+            .fixed_pos(position)
+            .constrain(true)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(210.0);
+                    let item = |ui: &mut egui::Ui, label: &str| {
+                        ui.add(egui::Button::new(label).frame(false).min_size(Vec2::new(200.0, 24.0))).clicked()
+                    };
+                    if item(ui, tr("📋  Copier", "📋  Copy")) {
+                        chosen = Some(None);
+                    }
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(tr("Demander à l'assistant", "Ask the assistant"))
+                            .size(11.0)
+                            .color(Color32::from_rgb(150, 160, 182)),
+                    );
+                    for (label, kind) in [
+                        (tr("✨  Expliquer", "✨  Explain"), SelectionAsk::Explain),
+                        (tr("🌐  Traduire", "🌐  Translate"), SelectionAsk::Translate),
+                        (tr("📝  Résumer", "📝  Summarize"), SelectionAsk::Summarize),
+                        (tr("💬  Poser une question…", "💬  Ask a question…"), SelectionAsk::Question),
+                    ] {
+                        if item(ui, label) {
+                            chosen = Some(Some(kind));
+                        }
+                    }
+                });
+            });
+        let clicked_outside = self.frame_count > opened_on.saturating_add(1)
+            && ctx.input(|i| i.pointer.any_pressed())
+            && !ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| area.response.rect.contains(p));
+        match chosen {
+            Some(None) => {
+                ctx.copy_text(text);
+                if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                    tab.text_selection.copied_feedback_frames = 90;
+                }
+                self.selection_menu = None;
+            }
+            Some(Some(kind)) => {
+                self.ai.ask_about_selection(kind, &text, page);
+                self.selection_menu = None;
+            }
+            None if clicked_outside || ctx.input(|i| i.key_pressed(Key::Escape)) => self.selection_menu = None,
+            None => {}
+        }
+    }
+
+    /// États de démonstration de l'assistant pour les captures (aucune requête n'est envoyée).
+    fn start_ai_demo(&mut self, ctx: &Context) {
+        if self.automation.selection_menu {
+            self.selection_menu = Some((Pos2::new(560.0, 330.0), u64::MAX - 2));
+        }
+        if let Some(question) = self.automation.ai_ask.clone() {
+            let images = self.automation.ai_attach.clone();
+            self.ai.attach_files(&images);
+            self.ai.ask(&question);
+        }
+        let Some(demo) = self.automation.ai_demo else { return };
+        let provider = self.prefs.ai.provider;
+        if demo != AiDemo::Setup {
+            self.ai.pretend_key_saved(provider);
+        }
+        self.ai.open = true;
+        match demo {
+            AiDemo::Setup | AiDemo::Empty => {}
+            AiDemo::Capture => self.ai.capture_mode = true,
+            AiDemo::Conversation => {
+                let Some(tab) = self.tabs.get(self.active_tab) else { return };
+                let source = crate::ai::history::SourceRef { title: tab.title.clone(), path: tab.path.clone() };
+                // Zone du haut de la première page, comme une capture faite à la souris.
+                let zone = tab.document.as_ref().zip(tab.page_dimensions.first()).and_then(|(doc, dim)| {
+                    let scale = 2.0;
+                    let region = crate::pdf_engine::TileRegion {
+                        x: (dim.width_pt * 0.08 * scale) as i32,
+                        y: (dim.height_pt * 0.06 * scale) as i32,
+                        width: (dim.width_pt * 0.84 * scale) as i32,
+                        height: (dim.height_pt * 0.2 * scale) as i32,
+                    };
+                    let image = doc.render_page_tile(0, scale, region).ok()?;
+                    let rgba: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+                    crate::ai::panel::png_from_rgba(image.size[0] as u32, image.size[1] as u32, rgba)
+                });
+                self.ai.load_demo(ctx, zone, source);
             }
         }
     }
@@ -6231,20 +6709,20 @@ impl KiteApp {
                     .inner_margin(Margin::same(12))
                     .show(ui, |ui| {
                         ui.label(
-                            egui::RichText::new(format!("Kite PDF {} est disponible.", release.version))
+                            egui::RichText::new(crate::trf!("Kite PDF {} est disponible.", "Kite PDF {} is available.", release.version))
                                 .size(12.5)
                                 .color(Color32::WHITE),
                         );
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            if ui.button("Voir la nouvelle version").clicked() {
+                            if ui.button(crate::i18n::tr("Voir la nouvelle version", "See the new version")).clicked() {
                                 let _ = std::process::Command::new("explorer").arg(&release.page_url).spawn();
                                 self.update_banner_closed = true;
                             }
-                            if ui.button("Ignorer cette version").clicked() {
+                            if ui.button(crate::i18n::tr("Ignorer cette version", "Skip this version")).clicked() {
                                 crate::updates::skip(&release.version);
                             }
-                            if ui.button("Plus tard").clicked() {
+                            if ui.button(crate::i18n::tr("Plus tard", "Later")).clicked() {
                                 self.update_banner_closed = true;
                             }
                         });
@@ -6282,13 +6760,13 @@ impl KiteApp {
                         }
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            if ui.button("Ne plus afficher").clicked() {
+                            if ui.button(crate::i18n::tr("Ne plus afficher", "Don't show again")).clicked() {
                                 for warning in &warnings {
                                     crate::setup::ignore_version(&warning.found_sha256);
                                 }
                                 self.dependency_warning_closed = true;
                             }
-                            if ui.button("Fermer").clicked() {
+                            if ui.button(crate::i18n::tr("Fermer", "Close")).clicked() {
                                 self.dependency_warning_closed = true;
                             }
                         });
@@ -6397,15 +6875,15 @@ impl KiteApp {
                     .inner_margin(Margin::same(18))
                     .show(ui, |ui| {
                         ui.set_width(width - 36.0);
-                        ui.label(egui::RichText::new("OCR approfondi").size(17.0).color(Color32::WHITE));
+                        ui.label(egui::RichText::new(crate::i18n::tr("OCR approfondi", "Deep OCR")).size(17.0).color(Color32::WHITE));
                         ui.add_space(4.0);
                         ui.label(
                             egui::RichText::new(
-                                "L'OCR approfondi relit chaque page entière comme une image, figures \
+                                crate::i18n::tr("L'OCR approfondi relit chaque page entière comme une image, figures \
                                  comprises. Il retrouve le texte scanné ou dessiné que la recherche ne peut \
                                  pas lire, mais il est lent : plusieurs secondes par page. Une fois le \
                                  document enregistré, ce texte est cherchable ici et dans les autres \
-                                 lecteurs PDF.",
+                                 lecteurs PDF.", "Deep OCR rereads each whole page as an image, figures included. It finds scanned or drawn text that search cannot read, but it is slow: several seconds per page. Once the document is saved, this text can be searched here and in other PDF readers."),
                             )
                             .size(12.0)
                             .color(muted),
@@ -6414,24 +6892,24 @@ impl KiteApp {
                         ui.radio_value(
                             &mut dialog.scope,
                             DeepOcrScope::CurrentPage,
-                            format!("Cette page (p. {})", current + 1),
+                            crate::trf!("Cette page (p. {})", "This page (p. {})", current + 1),
                         );
                         ui.radio_value(
                             &mut dialog.scope,
                             DeepOcrScope::Around,
-                            format!("Pages {} à {} (autour de celle-ci)", around.start() + 1, around.end() + 1),
+                            crate::trf!("Pages {} à {} (autour de celle-ci)", "Pages {} to {} (around this one)", around.start() + 1, around.end() + 1),
                         );
                         ui.radio_value(
                             &mut dialog.scope,
                             DeepOcrScope::WholeDocument,
-                            format!("Tout le document ({page_count} pages)"),
+                            crate::trf!("Tout le document ({page_count} pages)", "The whole document ({page_count} pages)"),
                         );
                         ui.add_space(10.0);
                         let summary = if pending.is_empty() {
-                            "Ces pages ont déjà été lues par l'OCR approfondi.".to_string()
+                            crate::i18n::tr("Ces pages ont déjà été lues par l'OCR approfondi.", "These pages have already been read by deep OCR.").to_string()
                         } else {
-                            format!(
-                                "{} page{} à lire · {}",
+                            crate::trf!(
+                                "{} page{} à lire · {}", "{} page{} to read · {}",
                                 pending.len(),
                                 if pending.len() > 1 { "s" } else { "" },
                                 format_duration(pending.len() as f32 * seconds_per_page)
@@ -6440,20 +6918,20 @@ impl KiteApp {
                         ui.label(egui::RichText::new(summary).size(12.5).color(Color32::WHITE));
                         let mut notes = Vec::new();
                         if lacking > 0 {
-                            notes.push(format!("{lacking} pages n'ont aucun texte lisible."));
+                            notes.push(crate::trf!("{lacking} pages n'ont aucun texte lisible.", "{lacking} pages have no readable text."));
                         }
-                        notes.push("Le texte déjà présent n'est pas dupliqué.".to_string());
+                        notes.push(crate::i18n::tr("Le texte déjà présent n'est pas dupliqué.", "Text already present is not duplicated.").to_string());
                         if running_here {
-                            notes.push("Une lecture est en cours : ces pages passeront en premier.".to_string());
+                            notes.push(crate::i18n::tr("Une lecture est en cours : ces pages passeront en premier.", "A reading is running: these pages will go first.").to_string());
                         } else {
-                            notes.push("Vous pouvez continuer à lire, mettre en pause ou arrêter.".to_string());
+                            notes.push(crate::i18n::tr("Vous pouvez continuer à lire, mettre en pause ou arrêter.", "You can keep reading, pause or stop.").to_string());
                         }
                         for note in notes {
                             ui.label(egui::RichText::new(note).size(11.0).color(muted));
                         }
                         if busy_elsewhere {
                             ui.label(
-                                egui::RichText::new("Une lecture est en cours dans un autre onglet : attendez sa fin ou arrêtez-la.")
+                                egui::RichText::new(crate::i18n::tr("Une lecture est en cours dans un autre onglet : attendez sa fin ou arrêtez-la.", "A reading is running in another tab: wait for it to finish or stop it."))
                                     .size(11.0)
                                     .color(Color32::from_rgb(250, 200, 110)),
                             );
@@ -6461,12 +6939,12 @@ impl KiteApp {
                         ui.add_space(12.0);
                         ui.horizontal(|ui| {
                             if ui
-                                .add_enabled(!pending.is_empty() && !busy_elsewhere, egui::Button::new("Lancer l'OCR approfondi"))
+                                .add_enabled(!pending.is_empty() && !busy_elsewhere, egui::Button::new(crate::i18n::tr("Lancer l'OCR approfondi", "Run deep OCR")))
                                 .clicked()
                             {
                                 start = true;
                             }
-                            if ui.button("Annuler").clicked() {
+                            if ui.button(crate::i18n::tr("Annuler", "Cancel")).clicked() {
                                 close = true;
                             }
                         });
@@ -6498,22 +6976,22 @@ impl KiteApp {
             * progress.seconds_per_page(DEFAULT_DEEP_OCR_SECONDS_PER_PAGE);
         ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new(format!("OCR approfondi {} / {}", progress.done, progress.total))
+                egui::RichText::new(crate::trf!("OCR approfondi {} / {}", "Deep OCR {} / {}", progress.done, progress.total))
                     .size(11.0)
                     .color(Color32::WHITE),
             );
             ui.label(
-                egui::RichText::new(if progress.paused { "en pause".to_string() } else { format_duration(remaining) })
+                egui::RichText::new(if progress.paused { crate::i18n::tr("en pause", "paused").to_string() } else { format_duration(remaining) })
                     .size(10.5)
                     .color(muted),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Arrêter").on_hover_text("Le texte déjà lu est conservé").clicked() {
+                if ui.small_button(crate::i18n::tr("Arrêter", "Stop")).on_hover_text(crate::i18n::tr("Le texte déjà lu est conservé", "Text already read is kept")).clicked() {
                     if let Ok(mut p) = run.progress.lock() {
                         p.cancelled = true;
                     }
                 }
-                let label = if progress.paused { "Reprendre" } else { "Pause" };
+                let label = if progress.paused { crate::i18n::tr("Reprendre", "Resume") } else { crate::i18n::tr("Pause", "Pause") };
                 if ui.small_button(label).clicked() {
                     if let Ok(mut p) = run.progress.lock() {
                         p.paused = !p.paused;
@@ -6545,13 +7023,13 @@ impl KiteApp {
             return;
         };
         let (message, can_save) = match &progress.error {
-            Some(error) => (format!("L'OCR approfondi s'est arrêté : {error}"), progress.read > 0),
-            None if progress.read == 0 => ("OCR approfondi arrêté avant la première page.".to_string(), false),
+            Some(error) => (crate::trf!("L'OCR approfondi s'est arrêté : {error}", "Deep OCR stopped: {error}"), progress.read > 0),
+            None if progress.read == 0 => (crate::i18n::tr("OCR approfondi arrêté avant la première page.", "Deep OCR stopped before the first page.").to_string(), false),
             None => (
-                format!(
+                crate::trf!(
                     "OCR approfondi {} : texte lu sur {} page{}. Enregistrez le document pour le \
-                     garder : il sera cherchable ici et dans les autres lecteurs PDF.",
-                    if progress.cancelled { "arrêté" } else { "terminé" },
+                     garder : il sera cherchable ici et dans les autres lecteurs PDF.", "Deep OCR {}: text read on {} page{}. Save the document to keep it: it will be searchable here and in other PDF readers.",
+                    if progress.cancelled { crate::i18n::tr("arrêté", "stopped") } else { crate::i18n::tr("terminé", "finished") },
                     progress.read,
                     if progress.read > 1 { "s" } else { "" }
                 ),
@@ -6575,10 +7053,10 @@ impl KiteApp {
                         ui.label(egui::RichText::new(message).size(12.5).color(Color32::WHITE));
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            if can_save && ui.button("Enregistrer").clicked() {
+                            if can_save && ui.button(crate::i18n::tr("Enregistrer", "Save")).clicked() {
                                 save = true;
                             }
-                            if ui.button(if can_save { "Plus tard" } else { "Fermer" }).clicked() {
+                            if ui.button(if can_save { crate::i18n::tr("Plus tard", "Later") } else { crate::i18n::tr("Fermer", "Close") }).clicked() {
                                 dismiss = true;
                             }
                         });
@@ -6622,19 +7100,19 @@ impl KiteApp {
                     .inner_margin(Margin::same(10))
                     .show(ui, |ui| {
                         ui.label(
-                            egui::RichText::new("Cette page n'a pas de texte sélectionnable.")
+                            egui::RichText::new(crate::i18n::tr("Cette page n'a pas de texte sélectionnable.", "This page has no selectable text."))
                                 .size(12.0)
                                 .color(Color32::WHITE),
                         );
                         ui.horizontal(|ui| {
                             if ui
-                                .button("Lire cette page")
-                                .on_hover_text("OCR approfondi de cette page seulement (quelques secondes)")
+                                .button(crate::i18n::tr("Lire cette page", "Read this page"))
+                                .on_hover_text(crate::i18n::tr("OCR approfondi de cette page seulement (quelques secondes)", "Deep OCR of this page only (a few seconds)"))
                                 .clicked()
                             {
                                 read_page = true;
                             }
-                            if ui.button("OCR approfondi…").clicked() {
+                            if ui.button(crate::i18n::tr("OCR approfondi…", "Deep OCR…")).clicked() {
                                 read = true;
                             }
                             if ui.small_button("✖").clicked() {
@@ -6746,7 +7224,7 @@ impl KiteApp {
                             ui.label(egui::RichText::new("🔍").size(18.0).color(muted));
                             let text_edit =
                                 egui::TextEdit::singleline(&mut self.command_palette.query)
-                                    .hint_text("Rechercher un PDF, un outil, une page…")
+                                    .hint_text(crate::i18n::tr("Rechercher un PDF, un outil, une page…", "Search for a PDF, a tool, a page…"))
                                     .font(FontId::proportional(18.0))
                                     .frame(false)
                                     .desired_width(ui.available_width());
@@ -6768,14 +7246,14 @@ impl KiteApp {
                         if entries.is_empty() {
                             ui.add_space(6.0);
                             ui.label(
-                                egui::RichText::new("Aucun résultat dans l'historique ni les outils.")
+                                egui::RichText::new(crate::i18n::tr("Aucun résultat dans l'historique ni les outils.", "No result in the history or the tools."))
                                     .color(muted),
                             );
                             ui.add_space(6.0);
                         } else if self.command_palette.query.trim().is_empty()
-                            && entries.iter().any(|e| e.category == "Récent")
+                            && entries.iter().any(|e| e.category == crate::i18n::tr("Récent", "Recent"))
                         {
-                            ui.label(egui::RichText::new("RÉCENTS").size(10.5).strong().color(muted));
+                            ui.label(egui::RichText::new(crate::i18n::tr("RÉCENTS", "RECENT")).size(10.5).strong().color(muted));
                             ui.add_space(2.0);
                         }
 
@@ -6855,7 +7333,7 @@ impl KiteApp {
                             // Les flèches n'existent que dans la police à chasse fixe d'egui.
                             ui.label(egui::RichText::new("↑↓").monospace().size(11.0).color(hint));
                             ui.label(
-                                egui::RichText::new("choisir   ·   Entrée ouvrir   ·   Échap fermer")
+                                egui::RichText::new(crate::i18n::tr("choisir   ·   Entrée ouvrir   ·   Échap fermer", "choose   ·   Enter open   ·   Esc close"))
                                     .size(10.5)
                                     .color(hint),
                             );
@@ -6891,11 +7369,11 @@ impl KiteApp {
 /// Icône et couleur d'une ligne de la barre centrale selon sa nature.
 fn palette_entry_icon(entry: &crate::tabs::PaletteEntry) -> (&'static str, Color32) {
     match entry.category {
-        "Récent" => ("📄", Color32::from_rgb(235, 120, 110)),
+        "Récent" | "Recent" => ("📄", Color32::from_rgb(235, 120, 110)),
         "Zoom" => ("🔍", Color32::from_rgb(140, 220, 170)),
-        "Onglet" => ("📑", Color32::from_rgb(120, 190, 255)),
+        "Onglet" | "Tab" => ("📑", Color32::from_rgb(120, 190, 255)),
         "Page" => ("↪", Color32::from_rgb(140, 220, 170)),
-        "Outil" => ("🛠", Color32::from_rgb(250, 205, 110)),
+        "Outil" | "Tool" => ("🛠", Color32::from_rgb(250, 205, 110)),
         _ => ("⚡", Color32::from_rgb(170, 160, 250)),
     }
 }
@@ -6915,22 +7393,22 @@ fn tab_context_menu(ui: &mut egui::Ui, idx: usize, tab: &DocumentTab, chosen: &m
             ui.close_menu();
         }
     };
-    choose(ui, "Afficher dans l'explorateur de fichiers", TabMenuAction::RevealInExplorer);
-    choose(ui, "Ouvrir avec l'application par défaut", TabMenuAction::OpenWithDefaultApp);
+    choose(ui, crate::i18n::tr("Afficher dans l'explorateur de fichiers", "Show in File Explorer"), TabMenuAction::RevealInExplorer);
+    choose(ui, crate::i18n::tr("Ouvrir avec l'application par défaut", "Open with the default application"), TabMenuAction::OpenWithDefaultApp);
     ui.separator();
-    if ui.button("Copier le chemin complet").clicked() {
+    if ui.button(crate::i18n::tr("Copier le chemin complet", "Copy the full path")).clicked() {
         let full = std::path::absolute(&tab.path).unwrap_or_else(|_| tab.path.clone());
         ui.ctx().copy_text(full.display().to_string());
         ui.close_menu();
     }
-    if ui.button("Copier le nom du fichier").clicked() {
+    if ui.button(crate::i18n::tr("Copier le nom du fichier", "Copy the file name")).clicked() {
         ui.ctx().copy_text(tab.title.clone());
         ui.close_menu();
     }
     ui.separator();
-    choose(ui, "Fermer", TabMenuAction::CloseThis);
-    choose(ui, "Fermer les autres onglets", TabMenuAction::CloseOthers);
-    choose(ui, "Fermer les onglets en dessous", TabMenuAction::CloseBelow);
+    choose(ui, crate::i18n::tr("Fermer", "Close"), TabMenuAction::CloseThis);
+    choose(ui, crate::i18n::tr("Fermer les autres onglets", "Close the other tabs"), TabMenuAction::CloseOthers);
+    choose(ui, crate::i18n::tr("Fermer les onglets en dessous", "Close the tabs below"), TabMenuAction::CloseBelow);
 }
 
 fn image_ocr_working(setting: crate::settings::ImageOcr, mode: crate::ocr_engine::OcrSpeedMode) -> bool {

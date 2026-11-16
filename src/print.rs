@@ -199,18 +199,18 @@ fn print_pages(
         fw_type: 0,
     };
     if unsafe { StartDocW(dc, &info) } <= 0 {
-        return Err("l'imprimante a refusé le document".to_string());
+        return Err(crate::i18n::tr("l'imprimante a refusé le document", "the printer refused the document").to_string());
     }
     // Zone imprimable de la feuille, en pixels de l'imprimante.
     let (area_w, area_h) = unsafe { (GetDeviceCaps(dc, HORZRES), GetDeviceCaps(dc, VERTRES)) };
     let outcome = engine.with_raw_document(pdf, |document| {
         for page_index in choice.pages.clone() {
             if unsafe { StartPage(dc) } <= 0 {
-                return Err("impression interrompue par l'imprimante".to_string());
+                return Err(crate::i18n::tr("impression interrompue par l'imprimante", "printing interrupted by the printer").to_string());
             }
             document.render_page_to_dc(page_index, dc, area_w, area_h, FPDF_ANNOT | FPDF_PRINTING)?;
             if unsafe { EndPage(dc) } <= 0 {
-                return Err("impression interrompue par l'imprimante".to_string());
+                return Err(crate::i18n::tr("impression interrompue par l'imprimante", "printing interrupted by the printer").to_string());
             }
             progress.lock().unwrap_or_else(|e| e.into_inner()).done += 1;
         }
