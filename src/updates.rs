@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/padimato/kite-pdf/releases/latest";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/padimato/aerolis/releases/latest";
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 3600);
 
 /// Version plus récente que celle-ci, publiée sur GitHub.
@@ -97,7 +97,7 @@ fn is_newer(candidate: &str, current: &str) -> bool {
 fn fetch_latest() -> Result<LatestRelease, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(10))
-        .user_agent(concat!("kite-pdf/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("aerolis/", env!("CARGO_PKG_VERSION")))
         .build();
     let response = agent
         .get(LATEST_RELEASE_API)
@@ -129,7 +129,7 @@ pub fn check_now(ctx: egui::Context) {
         }
         *manual = ManualCheck::Checking;
     }
-    let _ = std::thread::Builder::new().name("kite-update-check-now".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-update-check-now".into()).spawn(move || {
         let outcome = match fetch_latest() {
             Ok(latest) => {
                 let mut state = CheckState::load();
@@ -165,7 +165,7 @@ pub fn check_in_background(ctx: egui::Context) {
     if now_secs().saturating_sub(state.last_check) < CHECK_INTERVAL.as_secs() {
         return;
     }
-    let _ = std::thread::Builder::new().name("kite-update-check".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-update-check".into()).spawn(move || {
         let latest = fetch_latest();
         state.last_check = now_secs();
         state.save();

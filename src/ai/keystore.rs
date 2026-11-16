@@ -1,8 +1,8 @@
 //! Clé API rangée dans le Gestionnaire d'identification de Windows (« Informations d'identification
-//! Windows », cible `KitePDF/ai/<fournisseur>`). Windows la chiffre pour le compte de l'utilisateur :
+//! Windows », cible `Aerolis/ai/<fournisseur>`). Windows la chiffre pour le compte de l'utilisateur :
 //! elle n'est jamais écrite en clair sur le disque, ni dans les réglages.
 //!
-//! Pendant les captures automatisées (`KITE_DATA_DIR` défini), les clés restent en mémoire.
+//! Pendant les captures automatisées (`AEROLIS_DATA_DIR` défini), les clés restent en mémoire.
 
 use crate::settings::AiProvider;
 use std::collections::HashMap;
@@ -13,13 +13,18 @@ static MEMORY: Mutex<Option<HashMap<AiProvider, String>>> = Mutex::new(None);
 
 /// Variable d'environnement : lire le vrai coffre même avec un dossier de réglages d'essai
 /// (essais de l'assistant avec les clés que l'utilisateur a enregistrées lui-même).
-pub const USE_VAULT_ENV: &str = "KITE_USE_VAULT";
+pub const USE_VAULT_ENV: &str = "AEROLIS_USE_VAULT";
 
 fn in_memory() -> bool {
     cfg!(test) || std::env::var_os(crate::settings::DATA_DIR_ENV).is_some() && std::env::var_os(USE_VAULT_ENV).is_none()
 }
 
 fn target(provider: AiProvider) -> String {
+    format!("Aerolis/ai/{}", provider.key())
+}
+
+/// Cible sous l'ancien nom de l'application (« Kite PDF »).
+fn legacy_target(provider: AiProvider) -> String {
     format!("KitePDF/ai/{}", provider.key())
 }
 
@@ -27,7 +32,19 @@ pub fn load(provider: AiProvider) -> Option<String> {
     if in_memory() {
         return MEMORY.lock().ok()?.as_ref()?.get(&provider).cloned();
     }
-    windows::read(&target(provider))
+    read_or_migrate(&target(provider), &legacy_target(provider))
+}
+
+/// Lit la clé ; une clé encore rangée sous l'ancien nom passe sous le nouveau, puis l'ancienne est effacée.
+fn read_or_migrate(target: &str, legacy: &str) -> Option<String> {
+    if let Some(key) = windows::read(target) {
+        return Some(key);
+    }
+    let key = windows::read(legacy)?;
+    if windows::write(target, &key).is_ok() {
+        windows::delete(legacy);
+    }
+    Some(key)
 }
 
 pub fn save(provider: AiProvider, key: &str) -> Result<(), String> {
@@ -50,6 +67,7 @@ pub fn delete(provider: AiProvider) {
         return;
     }
     windows::delete(&target(provider));
+    windows::delete(&legacy_target(provider));
 }
 
 #[cfg(windows)]
@@ -110,7 +128,7 @@ mod windows {
 
     pub fn write(target: &str, key: &str) -> Result<(), String> {
         let mut name = wide(target);
-        let mut user = wide("Kite PDF");
+        let mut user = wide("Aerolis");
         let mut blob = key.as_bytes().to_vec();
         let credential = Credential {
             flags: 0,
@@ -169,11 +187,29 @@ mod tests {
         assert_eq!(load(AiProvider::Custom), None);
     }
 
+    /// Clé rangée sous l'ancien nom (« Kite PDF ») : reprise sous le nouveau (valeurs factices).
+    #[test]
+    #[cfg(windows)]
+    fn test_key_saved_under_the_old_name_moves_to_the_new_one() {
+        let (new, old) = (
+            format!("Aerolis/test/migration-{}", std::process::id()),
+            format!("KitePDF/test/migration-{}", std::process::id()),
+        );
+        windows::write(&old, "valeur-factice").unwrap();
+        assert_eq!(read_or_migrate(&new, &old).as_deref(), Some("valeur-factice"));
+        assert_eq!(windows::read(&new).as_deref(), Some("valeur-factice"));
+        assert_eq!(windows::read(&old), None);
+        // Ensuite, la nouvelle clé est lue directement.
+        assert_eq!(read_or_migrate(&new, &old).as_deref(), Some("valeur-factice"));
+        windows::delete(&new);
+        assert_eq!(read_or_migrate(&new, &old), None);
+    }
+
     /// Vrai coffre de Windows : écrit, relit et efface une cible de test.
     #[cfg(windows)]
     #[test]
     fn test_windows_vault_roundtrip() {
-        let target = "KitePDF/test/keystore-roundtrip";
+        let target = "Aerolis/test/keystore-roundtrip";
         windows::write(target, "sk-ant-test-123").unwrap();
         assert_eq!(windows::read(target).as_deref(), Some("sk-ant-test-123"));
         windows::delete(target);

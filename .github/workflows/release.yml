@@ -31,7 +31,7 @@ jobs:
         run: cargo build --release --locked
 
       - name: Composants pour les tests (PDFium, ONNX Runtime, modèles OCR)
-        run: target\release\kite-pdf.exe --fetch-deps
+        run: target\release\aerolis.exe --fetch-deps
 
       - name: Tests
         run: cargo test --release --locked
@@ -40,11 +40,11 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$env:APP_VERSION installer\kite-pdf.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$env:APP_VERSION installer\aerolis.iss
 
       - name: Publication
         uses: softprops/action-gh-release@v2
         with:
-          name: Kite PDF ${{ env.APP_VERSION }}
-          files: target/installer/KitePDF-Setup-${{ env.APP_VERSION }}.exe
+          name: Aerolis ${{ env.APP_VERSION }}
+          files: target/installer/Aerolis-Setup-${{ env.APP_VERSION }}.exe
           generate_release_notes: true

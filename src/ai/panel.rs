@@ -543,7 +543,7 @@ impl AiPanel {
         let image = image::load_from_memory(png).ok()?.to_rgba8();
         let size = [image.width() as usize, image.height() as usize];
         let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-        let texture = ctx.load_texture(format!("kite_ai_{key}"), color, egui::TextureOptions::LINEAR);
+        let texture = ctx.load_texture(format!("aerolis_ai_{key}"), color, egui::TextureOptions::LINEAR);
         if self.textures.len() > 64 {
             self.textures.clear();
         }
@@ -599,7 +599,7 @@ impl AiPanel {
         let width = 430.0_f32.min(area.width() - 2.0 * MARGIN).max(260.0);
         let height = 660.0_f32.min(area.height() - BUTTON_SIZE - 3.0 * MARGIN).max(240.0);
         let origin = Pos2::new(area.right() - MARGIN - width, area.bottom() - 2.0 * MARGIN - BUTTON_SIZE - height + 6.0);
-        egui::Area::new(egui::Id::new("kite_ai_panel"))
+        egui::Area::new(egui::Id::new("aerolis_ai_panel"))
             .order(egui::Order::Foreground)
             .fixed_pos(origin)
             .show(ctx, |ui| {
@@ -628,7 +628,7 @@ impl AiPanel {
 
     fn floating_button(&mut self, ctx: &egui::Context, area: Rect) {
         let center = Pos2::new(area.right() - MARGIN - BUTTON_SIZE / 2.0, area.bottom() - MARGIN - BUTTON_SIZE / 2.0);
-        egui::Area::new(egui::Id::new("kite_ai_button"))
+        egui::Area::new(egui::Id::new("aerolis_ai_button"))
             .order(egui::Order::Foreground)
             .fixed_pos(center - Vec2::splat(BUTTON_SIZE / 2.0))
             .show(ctx, |ui| {
@@ -773,8 +773,8 @@ impl AiPanel {
             ui.add_space(8.0);
             ui.label(
                 RichText::new(tr(
-                    "🔒 La clé est rangée dans le coffre de Windows, chiffrée pour votre compte. Le texte des PDF choisis comme sources n'est envoyé qu'au moment où vous posez une question. Astuce : enregistrez plusieurs clés gratuites (Réglages › Assistant IA) ; si un fournisseur est saturé, Kite essaie le suivant.",
-                    "🔒 The key is kept in the Windows vault, encrypted for your account. The text of the PDFs chosen as sources is only sent when you ask a question. Tip: save several free keys (Settings › AI assistant); if one provider is busy, Kite tries the next.",
+                    "🔒 La clé est rangée dans le coffre de Windows, chiffrée pour votre compte. Le texte des PDF choisis comme sources n'est envoyé qu'au moment où vous posez une question. Astuce : enregistrez plusieurs clés gratuites (Réglages › Assistant IA) ; si un fournisseur est saturé, Aerolis essaie le suivant.",
+                    "🔒 The key is kept in the Windows vault, encrypted for your account. The text of the PDFs chosen as sources is only sent when you ask a question. Tip: save several free keys (Settings › AI assistant); if one provider is busy, Aerolis tries the next.",
                 ))
                 .size(11.5)
                 .color(MUTED),
@@ -1114,7 +1114,7 @@ impl AiPanel {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let edit = egui::TextEdit::multiline(&mut self.draft)
-                    .id(egui::Id::new("kite_ai_input"))
+                    .id(egui::Id::new("aerolis_ai_input"))
                     .hint_text(tr("Posez une question sur le document…", "Ask a question about the document…"))
                     .desired_rows(2)
                     .desired_width(f32::INFINITY)
@@ -1269,8 +1269,8 @@ pub fn provider_picker(ui: &mut egui::Ui, provider: &mut AiProvider, saved_keys:
                 if !info.tested {
                     ui.label(RichText::new(tr("non testé", "not tested")).size(10.0).color(WARN))
                         .on_hover_text(tr(
-                            "Pas encore essayé par l'équipe Kite PDF avec une vraie clé.",
-                            "Not yet tried by the Kite PDF team with a real key.",
+                            "Pas encore essayé par l'équipe Aerolis avec une vraie clé.",
+                            "Not yet tried by the Aerolis team with a real key.",
                         ));
                 }
                 if saved_keys.contains(&p) {
@@ -1323,8 +1323,8 @@ pub fn untested_notice(ui: &mut egui::Ui, provider: AiProvider) {
             ui.set_width(ui.available_width());
             ui.label(
                 RichText::new(tr(
-                    "⚠ Ce fournisseur n'a pas encore été testé par l'équipe Kite PDF : nous n'avions pas de clé. Kite PDF est open source : si vous l'essayez, dites-nous si ça marche. Une contribution (pull request) pour améliorer l'assistant est la bienvenue !",
-                    "⚠ This provider has not been tested by the Kite PDF team yet: we had no key. Kite PDF is open source: if you try it, tell us whether it works. A contribution (pull request) to improve the assistant is welcome!",
+                    "⚠ Ce fournisseur n'a pas encore été testé par l'équipe Aerolis : nous n'avions pas de clé. Aerolis est open source : si vous l'essayez, dites-nous si ça marche. Une contribution (pull request) pour améliorer l'assistant est la bienvenue !",
+                    "⚠ This provider has not been tested by the Aerolis team yet: we had no key. Aerolis is open source: if you try it, tell us whether it works. A contribution (pull request) to improve the assistant is welcome!",
                 ))
                 .size(11.5)
                 .color(Color32::from_rgb(240, 214, 160)),

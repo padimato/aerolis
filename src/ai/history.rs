@@ -1,4 +1,4 @@
-//! Conversations avec l'assistant, une par fichier JSON dans `%APPDATA%\KitePDF\conversations`.
+//! Conversations avec l'assistant, une par fichier JSON dans `%APPDATA%\Aerolis\conversations`.
 //! Les images jointes y sont gardées (PNG en base64). La clé API n'y figure jamais.
 
 use serde::{Deserialize, Serialize};
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_conversation_roundtrip_and_list() {
-        let dir = std::env::temp_dir().join(format!("kite_ai_history_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("aerolis_ai_history_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mut conversation = Conversation::new();
         conversation.messages.push(Message {

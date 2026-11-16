@@ -1,10 +1,10 @@
 [package]
-name = "kite-pdf"
-version = "1.3.0"
+name = "aerolis"
+version = "1.3.1"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/padimato/kite-pdf"
-description = "Kite PDF : lecteur PDF rapide et léger pour Windows (OCR, annotations, formulaires)"
+repository = "https://github.com/padimato/aerolis"
+description = "Aerolis : lecteur PDF rapide et léger pour Windows (OCR, annotations, formulaires)"
 
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts"] }
@@ -12,6 +12,7 @@ egui = "0.31"
 pdfium-render = { version = "0.8", features = ["thread_safe"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 lopdf = "0.34"
+parking_lot = "0.12"
 rfd = "0.15"
 anyhow = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

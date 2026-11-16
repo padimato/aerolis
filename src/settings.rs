@@ -1,7 +1,7 @@
 //! Réglages gardés d'un lancement à l'autre : fenêtre, barre latérale et préférences de la page Réglages.
-//! Fichier texte `clé=valeur` dans `%APPDATA%\KitePDF\settings.txt`.
+//! Fichier texte `clé=valeur` dans `%APPDATA%\Aerolis\settings.txt`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Settings {
@@ -213,13 +213,13 @@ impl Default for Preferences {
 }
 
 /// Variable d'environnement : dossier des réglages et de l'historique à la place de
-/// `%APPDATA%\KitePDF` (essais automatisés, installation portable).
-pub const DATA_DIR_ENV: &str = "KITE_DATA_DIR";
+/// `%APPDATA%\Aerolis` (essais automatisés, installation portable).
+pub const DATA_DIR_ENV: &str = "AEROLIS_DATA_DIR";
 
 /// Nom des dossiers de l'application dans `%APPDATA%` et `%LOCALAPPDATA%`.
-pub const APP_DIR_NAME: &str = "KitePDF";
-/// Nom des dossiers avant que l'application s'appelle Kite PDF.
-const LEGACY_APP_DIR_NAME: &str = "SuperLecteurPDF";
+pub const APP_DIR_NAME: &str = "Aerolis";
+/// Noms des dossiers sous les anciens noms de l'application (« Kite PDF », puis « Super Lecteur PDF »).
+const LEGACY_APP_DIR_NAMES: [&str; 2] = ["KitePDF", "SuperLecteurPDF"];
 
 fn known_folder(var: &str) -> PathBuf {
     std::env::var_os(var).map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
@@ -238,12 +238,18 @@ pub fn local_data_dir() -> PathBuf {
     known_folder("LOCALAPPDATA").join(APP_DIR_NAME)
 }
 
-/// Reprend les dossiers de l'ancien nom (« Super Lecteur PDF ») : historique, réglages et composants
-/// déjà téléchargés restent ainsi disponibles après le changement de nom.
+/// Reprend les dossiers des anciens noms (« Kite PDF », « Super Lecteur PDF ») : historique, réglages,
+/// conversations et composants déjà téléchargés restent ainsi disponibles après le changement de nom.
 pub fn migrate_legacy_dirs() {
     for var in ["APPDATA", "LOCALAPPDATA"] {
-        let base = known_folder(var);
-        let (old, new) = (base.join(LEGACY_APP_DIR_NAME), base.join(APP_DIR_NAME));
+        migrate_dirs(&known_folder(var));
+    }
+}
+
+fn migrate_dirs(base: &Path) {
+    let new = base.join(APP_DIR_NAME);
+    for legacy in LEGACY_APP_DIR_NAMES {
+        let old = base.join(legacy);
         if old.is_dir() && !new.exists() {
             let _ = std::fs::rename(&old, &new);
         }
@@ -422,6 +428,27 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_legacy_folders_move_to_the_new_name() {
+        let base = std::env::temp_dir().join(format!("aerolis_migration_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("KitePDF")).unwrap();
+        std::fs::write(base.join("KitePDF").join("settings.txt"), "language=en
+").unwrap();
+        std::fs::create_dir_all(base.join("SuperLecteurPDF")).unwrap();
+        migrate_dirs(&base);
+        // Le nom le plus récent l'emporte ; le plus ancien reste en place.
+        assert_eq!(std::fs::read_to_string(base.join("Aerolis").join("settings.txt")).unwrap(), "language=en
+");
+        assert!(!base.join("KitePDF").exists());
+        assert!(base.join("SuperLecteurPDF").exists());
+        // Un dossier déjà présent n'est jamais écrasé.
+        std::fs::create_dir_all(base.join("KitePDF")).unwrap();
+        migrate_dirs(&base);
+        assert!(base.join("KitePDF").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn test_settings_roundtrip() {

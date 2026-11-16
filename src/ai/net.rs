@@ -62,7 +62,7 @@ fn agent(read_timeout: Duration) -> ureq::Agent {
         .timeout_connect(Duration::from_secs(10))
         // Silence maximal entre deux morceaux de réponse.
         .timeout_read(read_timeout)
-        .user_agent(&format!("KitePDF/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(&format!("Aerolis/{}", env!("CARGO_PKG_VERSION")))
         .build()
 }
 
@@ -75,7 +75,7 @@ fn with_auth(request: ureq::Request, provider: AiProvider, api_key: Option<&str>
     };
     if provider == AiProvider::OpenRouter {
         // Identification de l'application, demandée par OpenRouter (aucune donnée de l'utilisateur).
-        request.set("HTTP-Referer", "https://github.com/padimato/kite-pdf").set("X-Title", "Kite PDF")
+        request.set("HTTP-Referer", "https://github.com/padimato/aerolis").set("X-Title", "Aerolis")
     } else {
         request
     }
@@ -138,7 +138,7 @@ pub fn start_chat(input: ChatInput, ctx: egui::Context) -> ChatJob {
     let (tx, rx) = channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_thread = cancel.clone();
-    let _ = std::thread::Builder::new().name("kite-ai-chat".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-ai-chat".into()).spawn(move || {
         run_chat(input, &tx, &cancel_thread, &ctx);
         ctx.request_repaint();
     });
@@ -192,7 +192,7 @@ fn resolve_routes(routes: &[Route]) -> Vec<(Route, String, Vec<String>)> {
 /// Démarre le proxy de confidentialité en avance (fenêtre de l'assistant ouverte), pour que la
 /// première question n'attende pas son chargement (jusqu'à une minute).
 pub fn prewarm_privacy(routes: Vec<Route>, english: bool) {
-    let _ = std::thread::Builder::new().name("kite-privaite-prewarm".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-privaite-prewarm".into()).spawn(move || {
         let resolved = resolve_routes(&routes);
         let entries: Vec<super::privacy::ProxyEntry> = resolved.iter().map(|(r, m, _)| proxy_entry(r, m)).collect();
         if !entries.is_empty() {
@@ -203,7 +203,7 @@ pub fn prewarm_privacy(routes: Vec<Route>, english: bool) {
 
 /// Alias d'un fournisseur dans la configuration du proxy.
 fn proxy_alias(provider: AiProvider) -> String {
-    format!("kite-{}", provider.key())
+    format!("aerolis-{}", provider.key())
 }
 
 /// Modèle exposé par le proxy pour cet essai.
@@ -222,10 +222,10 @@ fn proxy_entry(route: &Route, model: &str) -> super::privacy::ProxyEntry {
     }
 }
 
-/// Journal de diagnostic des requêtes (`KITE_AI_DEBUG=1`) : adresses, statuts, délais, début du flux.
+/// Journal de diagnostic des requêtes (`AEROLIS_AI_DEBUG=1`) : adresses, statuts, délais, début du flux.
 /// La clé n'y figure jamais.
 fn debug_enabled() -> bool {
-    std::env::var_os("KITE_AI_DEBUG").is_some()
+    std::env::var_os("AEROLIS_AI_DEBUG").is_some()
 }
 
 fn run_chat(input: ChatInput, tx: &Sender<ChatEvent>, cancel: &AtomicBool, ctx: &egui::Context) {
@@ -340,7 +340,7 @@ fn run_chat(input: ChatInput, tx: &Sender<ChatEvent>, cancel: &AtomicBool, ctx: 
             via_proxy: false,
         };
         if let Some((endpoint, extras)) = &proxy {
-            // Le proxy connaît le modèle sous l'alias « kite-<fournisseur> » et détient la clé.
+            // Le proxy connaît le modèle sous l'alias « aerolis-<fournisseur> » et détient la clé.
             request.model = proxy_alias(route.provider);
             request.base_url = endpoint.base_url.clone();
             request.api_key = Some(endpoint.token.clone());
@@ -356,7 +356,7 @@ fn run_chat(input: ChatInput, tx: &Sender<ChatEvent>, cancel: &AtomicBool, ctx: 
         let mut served_model = model.clone();
         let result = stream(&request, cancel, timeout, |event| {
             if let ChatEvent::Via(model) = &event {
-                if !model.starts_with("kite-") {
+                if !model.starts_with("aerolis-") {
                     served_model = model.clone();
                 }
                 return;
@@ -532,7 +532,7 @@ pub fn list_models(provider: AiProvider, base_url: &str, api_key: Option<&str>) 
 /// Liste des modèles proposés par le fournisseur, lue dans un fil à part.
 pub fn fetch_models(provider: AiProvider, base_url: String, api_key: Option<String>, ctx: egui::Context) -> Receiver<Result<Vec<String>, String>> {
     let (tx, rx) = channel();
-    let _ = std::thread::Builder::new().name("kite-ai-models".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-ai-models".into()).spawn(move || {
         let _ = tx.send(list_models(provider, &base_url, api_key.as_deref()));
         ctx.request_repaint();
     });

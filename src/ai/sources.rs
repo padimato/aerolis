@@ -77,7 +77,7 @@ fn read_pages(spec: &SourceSpec) -> Result<Arc<Vec<PageContent>>, String> {
         let _lock = PdfEngine::lock_guard();
         drop(doc);
     }
-    if std::env::var_os("KITE_TIMING").is_some() {
+    if std::env::var_os("AEROLIS_TIMING").is_some() {
         eprintln!("[ai] texte de {} pages lu en {:.0} ms", pages.len(), started.elapsed().as_secs_f64() * 1000.0);
     }
     let pages = Arc::new(pages);
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_prepare_reads_sample_pdf() {
-        let dir = std::env::temp_dir().join("kite_ai_sources_test");
+        let dir = std::env::temp_dir().join("aerolis_ai_sources_test");
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("sample.pdf");
         crate::pdf_engine::ensure_sample_pdf(&path).unwrap();

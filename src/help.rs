@@ -92,14 +92,14 @@ fn card_frame() -> egui::Frame {
 pub fn show_welcome(ctx: &egui::Context, logo: Option<&egui::TextureHandle>) -> Option<WelcomeAction> {
     let mut action = None;
     let width = 520.0_f32.min(ctx.screen_rect().width() - 32.0);
-    let modal = egui::Modal::new(egui::Id::new("kite_welcome")).frame(card_frame()).show(ctx, |ui| {
+    let modal = egui::Modal::new(egui::Id::new("aerolis_welcome")).frame(card_frame()).show(ctx, |ui| {
         ui.set_width(width - 44.0);
         ui.horizontal(|ui| {
             if let Some(logo) = logo {
                 ui.add(egui::Image::new(logo).fit_to_exact_size(Vec2::splat(40.0)));
             }
             ui.vertical(|ui| {
-                ui.label(RichText::new(crate::i18n::tr("Bienvenue dans Kite PDF", "Welcome to Kite PDF")).size(20.0).strong().color(Color32::WHITE));
+                ui.label(RichText::new(crate::i18n::tr("Bienvenue dans Aerolis", "Welcome to Aerolis")).size(20.0).strong().color(Color32::WHITE));
                 ui.label(RichText::new(crate::i18n::tr("Quelques gestes pour bien démarrer", "A few gestures to get started")).size(12.5).color(MUTED));
             });
         });
@@ -156,7 +156,7 @@ pub fn show_shortcuts(ctx: &egui::Context) -> bool {
         2 => 920.0,
         _ => (screen.width() - 32.0).min(480.0),
     };
-    let modal = egui::Modal::new(egui::Id::new("kite_shortcuts")).frame(card_frame()).show(ctx, |ui| {
+    let modal = egui::Modal::new(egui::Id::new("aerolis_shortcuts")).frame(card_frame()).show(ctx, |ui| {
         ui.set_width(width - 44.0);
         ui.set_max_width(width - 44.0);
         ui.horizontal(|ui| {
@@ -178,7 +178,7 @@ pub fn show_shortcuts(ctx: &egui::Context) -> bool {
             let group = |ui: &mut egui::Ui, (title, entries): &(&str, Vec<(&str, &str)>)| {
                 ui.label(RichText::new(*title).size(13.5).strong().color(Color32::from_rgb(130, 170, 255)));
                 ui.add_space(2.0);
-                egui::Grid::new(("kite_shortcuts_grid", *title)).num_columns(2).spacing([10.0, 5.0]).show(ui, |ui| {
+                egui::Grid::new(("aerolis_shortcuts_grid", *title)).num_columns(2).spacing([10.0, 5.0]).show(ui, |ui| {
                     for (keys, action) in entries.iter() {
                         key_badge(ui, keys);
                         ui.label(RichText::new(*action).size(12.5).color(MUTED));

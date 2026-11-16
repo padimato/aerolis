@@ -3,12 +3,12 @@
 //! avant l'envoi au fournisseur d'IA, puis remet les vraies valeurs dans la réponse.
 //!
 //! Installation en un clic, seulement pour qui la demande (environ 1,5 Go) : `uv` (vérifié par son
-//! empreinte) installe un Python et PrivAiTe dans `%LOCALAPPDATA%\KitePDF\privaite`, sans toucher au
+//! empreinte) installe un Python et PrivAiTe dans `%LOCALAPPDATA%\Aerolis\privaite`, sans toucher au
 //! reste de l'ordinateur ; les modèles de détection sont téléchargés tout de suite.
 //!
 //! Le proxy démarre au premier envoi, écoute seulement sur `127.0.0.1` avec un mot de passe tiré au
-//! hasard, et reçoit les clés API par son environnement (jamais sur le disque). Il s'arrête avec Kite,
-//! même si Kite plante (objet tâche de Windows).
+//! hasard, et reçoit les clés API par son environnement (jamais sur le disque). Il s'arrête avec Aerolis,
+//! même si Aerolis plante (objet tâche de Windows).
 
 use crate::i18n::tr;
 use crate::trf;
@@ -73,7 +73,7 @@ pub fn installed_size() -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Processus enfants : sans fenêtre de console, tués avec Kite (objet tâche de Windows)
+// Processus enfants : sans fenêtre de console, tués avec Aerolis (objet tâche de Windows)
 // ---------------------------------------------------------------------------------------------
 
 #[cfg(windows)]
@@ -116,7 +116,7 @@ mod job {
         fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
     }
 
-    /// Objet tâche partagé : fermé par Windows à la fin de Kite, il emporte les processus qu'il contient.
+    /// Objet tâche partagé : fermé par Windows à la fin d'Aerolis, il emporte les processus qu'il contient.
     fn job() -> Option<usize> {
         static JOB: OnceLock<Option<usize>> = OnceLock::new();
         *JOB.get_or_init(|| {
@@ -163,7 +163,7 @@ fn command(program: &Path) -> Command {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    // Tout reste dans le dossier de Kite ; la configuration uv de l'utilisateur est ignorée.
+    // Tout reste dans le dossier d'Aerolis ; la configuration uv de l'utilisateur est ignorée.
     command
         .env("UV_PYTHON_INSTALL_DIR", dir().join("python"))
         .env("UV_CACHE_DIR", dir().join("cache"))
@@ -223,7 +223,7 @@ pub fn start_install(ui_lang_en: bool, ctx: egui::Context) {
         *state = InstallState::Running { step: 1, label: String::new(), detail: String::new() };
     }
     INSTALL_CANCEL.store(false, Ordering::Relaxed);
-    let _ = std::thread::Builder::new().name("kite-privaite-install".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("aerolis-privaite-install".into()).spawn(move || {
         let result = install(ui_lang_en, &ctx);
         match result {
             Ok(()) => set_state(InstallState::Idle, &ctx),
@@ -351,7 +351,7 @@ fn install(ui_lang_en: bool, ctx: &egui::Context) -> Result<(), String> {
         return Err(String::new());
     }
 
-    // 2. Python, dans le dossier de Kite.
+    // 2. Python, dans le dossier d'Aerolis.
     step(2, tr("Installation de Python (environ 40 Mo)…", "Installing Python (about 40 MB)…"));
     if !python().is_file() {
         let mut venv = command(&uv());
@@ -377,7 +377,7 @@ fn install(ui_lang_en: bool, ctx: &egui::Context) -> Result<(), String> {
         "Downloading the detection models (about 600 MB)…",
     ));
     let warmup = vec![ProxyEntry {
-        alias: "kite-warmup".into(),
+        alias: "aerolis-warmup".into(),
         litellm_model: "openai/warmup".into(),
         api_base: Some("http://127.0.0.1:9".into()),
         key: None,
@@ -422,7 +422,7 @@ fn folder_size(path: &Path) -> u64 {
 // Proxy
 // ---------------------------------------------------------------------------------------------
 
-/// Un modèle exposé par le proxy, sous l'alias `kite-<fournisseur>`.
+/// Un modèle exposé par le proxy, sous l'alias `aerolis-<fournisseur>`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProxyEntry {
     pub alias: String,
@@ -437,7 +437,7 @@ pub struct ProxyEntry {
 
 impl ProxyEntry {
     fn key_env(&self) -> String {
-        format!("KITE_KEY_{}", self.alias.trim_start_matches("kite-").to_ascii_uppercase().replace('-', "_"))
+        format!("AEROLIS_KEY_{}", self.alias.trim_start_matches("aerolis-").to_ascii_uppercase().replace('-', "_"))
     }
 }
 
@@ -462,9 +462,9 @@ static PROXY: Mutex<Option<Running>> = Mutex::new(None);
 /// (la question suivante attend son redémarrage).
 const IDLE_STOP: Duration = Duration::from_secs(15 * 60);
 
-/// Délai d'inactivité (`KITE_PRIVAITE_IDLE_SECS` le raccourcit pour les essais).
+/// Délai d'inactivité (`AEROLIS_PRIVAITE_IDLE_SECS` le raccourcit pour les essais).
 fn idle_stop() -> Duration {
-    std::env::var("KITE_PRIVAITE_IDLE_SECS")
+    std::env::var("AEROLIS_PRIVAITE_IDLE_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
         .map(Duration::from_secs)
@@ -498,7 +498,7 @@ impl Drop for InUse {
 fn watch_idle() {
     static WATCHER: std::sync::Once = std::sync::Once::new();
     WATCHER.call_once(|| {
-        let _ = std::thread::Builder::new().name("kite-privaite-idle".into()).spawn(|| loop {
+        let _ = std::thread::Builder::new().name("aerolis-privaite-idle".into()).spawn(|| loop {
             std::thread::sleep(Duration::from_secs(30).min(idle_stop()));
             if let Ok(mut slot) = PROXY.lock() {
                 if IN_USE.load(Ordering::SeqCst) == 0 && slot.as_ref().is_some_and(|r| r.last_used.elapsed() >= idle_stop()) {
@@ -567,8 +567,8 @@ pub fn config_yaml(entries: &[ProxyEntry], port: u16, english: bool) -> String {
         "        method: \"redact\"".into(),
         "logging:".into(),
         "  format: \"json\"".into(),
-        // Journal détaillé pour le diagnostic (`KITE_AI_DEBUG=1`), discret sinon.
-        format!("  level: \"{}\"", if std::env::var_os("KITE_AI_DEBUG").is_some() { "debug" } else { "warning" }),
+        // Journal détaillé pour le diagnostic (`AEROLIS_AI_DEBUG=1`), discret sinon.
+        format!("  level: \"{}\"", if std::env::var_os("AEROLIS_AI_DEBUG").is_some() { "debug" } else { "warning" }),
     ];
     lines.join("\n") + "\n"
 }
@@ -603,7 +603,7 @@ fn last_log_lines(path: &Path, count: usize) -> String {
 fn start_proxy(entries: &[ProxyEntry], english: bool, patience: Duration, status: &dyn Fn(String)) -> Result<Running, String> {
     let port = free_port()?;
     let token = random_token();
-    let config_path = dir().join("kite-privaite.yaml");
+    let config_path = dir().join("aerolis-privaite.yaml");
     std::fs::write(&config_path, config_yaml(entries, port, english)).map_err(|e| e.to_string())?;
     let log = std::fs::File::create(proxy_log()).map_err(|e| e.to_string())?;
     let mut cmd = command(&python());
@@ -701,7 +701,7 @@ pub fn ensure_running(entries: &[ProxyEntry], english: bool, status: &dyn Fn(Str
     Ok(endpoint)
 }
 
-/// Arrête le proxy (fermeture de Kite, désinstallation).
+/// Arrête le proxy (fermeture d'Aerolis, désinstallation).
 pub fn shutdown() {
     if let Ok(mut slot) = PROXY.lock() {
         if let Some(mut running) = slot.take() {
@@ -719,14 +719,14 @@ mod tests {
     fn test_config_keeps_keys_out_and_listens_locally() {
         let entries = vec![
             ProxyEntry {
-                alias: "kite-gemini".into(),
+                alias: "aerolis-gemini".into(),
                 litellm_model: "openai/gemini-flash-lite-latest".into(),
                 api_base: Some("https://generativelanguage.googleapis.com/v1beta/openai".into()),
                 key: Some("SECRET-KEY-VALUE".into()),
                 forward_params: vec![],
             },
             ProxyEntry {
-                alias: "kite-openrouter".into(),
+                alias: "aerolis-openrouter".into(),
                 litellm_model: "openai/nvidia/nemotron-3.5-lightning:free".into(),
                 api_base: Some("https://openrouter.ai/api/v1".into()),
                 key: Some("other".into()),
@@ -735,15 +735,15 @@ mod tests {
         ];
         let yaml = config_yaml(&entries, 8452, false);
         assert!(!yaml.contains("SECRET-KEY-VALUE"));
-        assert!(yaml.contains("api_key: \"${KITE_KEY_GEMINI}\""));
+        assert!(yaml.contains("api_key: \"${AEROLIS_KEY_GEMINI}\""));
         assert!(yaml.contains("host: \"127.0.0.1\""));
         assert!(yaml.contains("preset: \"minilm\""));
         assert!(yaml.contains("forward_params: [\"reasoning\", \"models\"]"));
         assert!(yaml.contains("\n      languages: [\"fr\"]\n      nlp_engine: \"blank\"\n"));
         assert!(yaml.contains("\n  detection_cache:\n    enabled: true\n"));
         assert!(yaml.contains("\n      CREDIT_CARD:\n        method: \"mask\"\n"));
-        assert!(yaml.contains("\n  - model_name: \"kite-gemini\"\n    litellm_params:\n      model: "));
-        assert_eq!(entries[1].key_env(), "KITE_KEY_OPENROUTER");
+        assert!(yaml.contains("\n  - model_name: \"aerolis-gemini\"\n    litellm_params:\n      model: "));
+        assert_eq!(entries[1].key_env(), "AEROLIS_KEY_OPENROUTER");
         // Un changement de modèle redémarre le proxy, pas une question de plus.
         assert_ne!(config_hash(&entries, false), config_hash(&entries[..1], false));
         assert_eq!(config_hash(&entries, false), config_hash(&entries.clone(), false));

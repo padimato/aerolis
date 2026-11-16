@@ -171,7 +171,7 @@ pub fn show(ctx: &egui::Context, prefs: &mut Preferences, state: &mut PageState,
         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(70, 100, 170)))
         .corner_radius(CornerRadius::same(14))
         .inner_margin(Margin::same(20));
-    let modal = egui::Modal::new(egui::Id::new("kite_settings")).frame(frame).show(ctx, |ui| {
+    let modal = egui::Modal::new(egui::Id::new("aerolis_settings")).frame(frame).show(ctx, |ui| {
         let inner_width = width - 40.0;
         ui.set_width(inner_width);
         ui.set_max_width(inner_width);
@@ -317,12 +317,12 @@ fn general(ui: &mut egui::Ui, prefs: &mut Preferences, actions: &mut Vec<Action>
     ui.radio_value(&mut prefs.layout, Layout::TopBar, tr("Toujours la barre en haut", "Always the top bar"));
 
     section_title(ui, "Windows");
-    if ui.button(tr("Faire de Kite PDF le lecteur PDF par défaut…", "Make Kite PDF the default PDF reader…")).clicked() {
+    if ui.button(tr("Faire d'Aerolis le lecteur PDF par défaut…", "Make Aerolis the default PDF reader…")).clicked() {
         actions.push(Action::MakeDefaultReader);
     }
     note(ui, tr(
-        "Ouvre les Paramètres de Windows : choisissez Kite PDF pour les fichiers .pdf.",
-        "Opens Windows Settings: choose Kite PDF for .pdf files.",
+        "Ouvre les Paramètres de Windows : choisissez Aerolis pour les fichiers .pdf.",
+        "Opens Windows Settings: choose Aerolis for .pdf files.",
     ));
 }
 
@@ -358,8 +358,8 @@ fn documents(ui: &mut egui::Ui, prefs: &mut Preferences) {
 fn image_text(ui: &mut egui::Ui, prefs: &mut Preferences, info: &PageInfo, actions: &mut Vec<Action>) {
     ui.add_space(4.0);
     note(ui, tr(
-        "Kite lit le texte des images et des pages scannées pour que la recherche (Ctrl+F) le trouve. Ce travail se fait sur l'ordinateur, sans rien envoyer.",
-        "Kite reads the text of images and scanned pages so that search (Ctrl+F) finds it. This happens on your computer; nothing is sent.",
+        "Aerolis lit le texte des images et des pages scannées pour que la recherche (Ctrl+F) le trouve. Ce travail se fait sur l'ordinateur, sans rien envoyer.",
+        "Aerolis reads the text of images and scanned pages so that search (Ctrl+F) finds it. This happens on your computer; nothing is sent.",
     ));
     section_title(ui, tr("Quand lire les images", "When to read images"));
     ui.radio_value(
@@ -541,8 +541,8 @@ fn assistant(ui: &mut egui::Ui, prefs: &mut Preferences, state: &mut PageState, 
         ),
     );
     note(ui, tr(
-        "Les offres gratuites saturent parfois (limite par minute ou par jour). Enregistrez plusieurs clés gratuites : Kite passe au suivant, les plus rapides d'abord, et indique sous la réponse qui a répondu.",
-        "Free plans sometimes run out (per-minute or per-day limits). Save several free keys: Kite moves on to the next one, fastest first, and shows under the answer who replied.",
+        "Les offres gratuites saturent parfois (limite par minute ou par jour). Enregistrez plusieurs clés gratuites : Aerolis passe au suivant, les plus rapides d'abord, et indique sous la réponse qui a répondu.",
+        "Free plans sometimes run out (per-minute or per-day limits). Save several free keys: Aerolis moves on to the next one, fastest first, and shows under the answer who replied.",
     ));
 
     section_title(ui, tr("Envoi des documents", "Sending documents"));
@@ -638,8 +638,8 @@ fn privacy_proxy(ui: &mut egui::Ui, ai: &mut crate::settings::AiPrefs, state: &m
             }
         });
         note(ui, tr(
-            "Téléchargé une seule fois, depuis les sources officielles (Python, PrivAiTe, modèles de détection), dans le dossier de Kite. Rien d'autre n'est modifié sur l'ordinateur.",
-            "Downloaded once, from official sources (Python, PrivAiTe, detection models), into Kite's folder. Nothing else on the computer is changed.",
+            "Téléchargé une seule fois, depuis les sources officielles (Python, PrivAiTe, modèles de détection), dans le dossier d'Aerolis. Rien d'autre n'est modifié sur l'ordinateur.",
+            "Downloaded once, from official sources (Python, PrivAiTe, detection models), into the Aerolis folder. Nothing else on the computer is changed.",
         ));
         return;
     }
@@ -739,11 +739,11 @@ fn updates(ui: &mut egui::Ui, prefs: &mut Preferences, info: &PageInfo, actions:
                 note(ui, tr("Recherche…", "Checking…"));
             }
             ManualCheck::UpToDate => {
-                ui.label(RichText::new(tr("✔ Kite PDF est à jour.", "✔ Kite PDF is up to date.")).size(12.0).color(OK_GREEN));
+                ui.label(RichText::new(tr("✔ Aerolis est à jour.", "✔ Aerolis is up to date.")).size(12.0).color(OK_GREEN));
             }
             ManualCheck::Available(release) => {
                 ui.label(
-                    RichText::new(trf!("Kite PDF {} est disponible.", "Kite PDF {} is available.", release.version))
+                    RichText::new(trf!("Aerolis {} est disponible.", "Aerolis {} is available.", release.version))
                         .size(12.0)
                         .color(Color32::WHITE),
                 );
@@ -759,8 +759,8 @@ fn updates(ui: &mut egui::Ui, prefs: &mut Preferences, info: &PageInfo, actions:
     ui.add_space(8.0);
     ui.checkbox(&mut prefs.check_updates, tr("Vérifier automatiquement (une fois par jour)", "Check automatically (once a day)"));
     note(ui, tr(
-        "Kite consulte la page des versions sur GitHub et vous prévient. Rien n'est installé sans vous.",
-        "Kite looks at the releases page on GitHub and lets you know. Nothing is installed without you.",
+        "Aerolis consulte la page des versions sur GitHub et vous prévient. Rien n'est installé sans vous.",
+        "Aerolis looks at the releases page on GitHub and lets you know. Nothing is installed without you.",
     ));
 }
 
@@ -778,8 +778,8 @@ fn help(ui: &mut egui::Ui, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         note(ui, &trf!(
-            "Kite PDF {} · logiciel libre (licence MIT) ·",
-            "Kite PDF {} · free software (MIT license) ·",
+            "Aerolis {} · logiciel libre (licence MIT) ·",
+            "Aerolis {} · free software (MIT license) ·",
             env!("CARGO_PKG_VERSION")
         ));
         if ui.link(RichText::new(tr("page du projet", "project page")).size(11.5)).clicked() {

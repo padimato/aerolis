@@ -1,4 +1,4 @@
-# Cahier des Charges — Kite PDF (Windows / Rust)
+# Cahier des Charges — Aerolis (Windows / Rust)
 
 ## 1. Vision & Objectifs du Projet
 

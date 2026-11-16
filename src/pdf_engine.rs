@@ -116,7 +116,9 @@ pub struct PageDetails {
     pub has_app_drawn_annotations: bool,
     pub has_form_widgets: bool,
 }
-static PDFIUM_GUARD: Mutex<()> = Mutex::new(());
+/// Verrou de PDFium : toute séquence d'appels (et la fermeture d'un document) le prend. Réentrant, pour
+/// qu'un document fermé alors que le fil tient déjà le verrou ne se bloque pas lui-même.
+static PDFIUM_GUARD: parking_lot::ReentrantMutex<()> = parking_lot::const_reentrant_mutex(());
 
 /// Dimensions d'une page PDF en points (1 pt = 1/72 pouce)
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -222,12 +224,22 @@ pub struct LoadedPdfDocument<'a> {
     pub ocr_scanned_pages: Vec<bool>,
     /// Pages déjà lues par l'OCR approfondi lors d'un enregistrement précédent
     pub deep_ocr_pages: Vec<bool>,
-    doc: PdfDocument<'a>,
+    /// Fermé sous le verrou de PDFium (voir `Drop`) : une fermeture pendant qu'un autre fil
+    /// utilise PDFium le faisait planter.
+    doc: std::mem::ManuallyDrop<PdfDocument<'a>>,
+}
+
+impl Drop for LoadedPdfDocument<'_> {
+    fn drop(&mut self) {
+        let _lock = PDFIUM_GUARD.lock();
+        // SAFETY : le document n'est plus utilisé après ce point (on est dans `drop`).
+        unsafe { std::mem::ManuallyDrop::drop(&mut self.doc) }
+    }
 }
 
 impl PdfEngine {
-    pub fn lock_guard() -> std::sync::MutexGuard<'static, ()> {
-        PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+    pub fn lock_guard() -> parking_lot::ReentrantMutexGuard<'static, ()> {
+        PDFIUM_GUARD.lock()
     }
 
     /// Retourne l'instance singleton globale de `PdfEngine` (garantit que `FPDF_InitLibrary` n'est appelé qu'une seule fois
@@ -254,7 +266,7 @@ impl PdfEngine {
             }
         }
         Pdfium::bind_to_system_library().context(
-            "Impossible de charger pdfium.dll : lancez `kite-pdf --fetch-deps` pour l'installer.",
+            "Impossible de charger pdfium.dll : lancez `aerolis --fetch-deps` pour l'installer.",
         )
     }
 
@@ -273,7 +285,7 @@ impl PdfEngine {
     }
 
     pub fn open_lightweight<'a>(&'a self, path: &Path) -> Result<LoadedPdfDocument<'a>> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let doc = self.open_with_password(path)?;
         Ok(LoadedPdfDocument {
             path: path.to_path_buf(),
@@ -285,13 +297,13 @@ impl PdfEngine {
             declares_form: false,
             ocr_scanned_pages: Vec::new(),
             deep_ocr_pages: Vec::new(),
-            doc,
+            doc: std::mem::ManuallyDrop::new(doc),
         })
     }
 
     /// Charge un document PDF depuis le disque et extrait uniquement les métadonnées légères des pages.
     pub fn load_document<'a>(&'a self, path: &Path) -> Result<LoadedPdfDocument<'a>> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let doc = self.open_with_password(path)?;
 
         let pages = doc.pages();
@@ -350,7 +362,7 @@ impl PdfEngine {
             declares_form,
             ocr_scanned_pages,
             deep_ocr_pages,
-            doc,
+            doc: std::mem::ManuallyDrop::new(doc),
         })
     }
 
@@ -363,7 +375,7 @@ impl PdfEngine {
         let render = render_page_to_dc_fn().ok_or("FPDF_RenderPage absent de pdfium.dll")?;
         let path_text = path.to_str().ok_or("chemin de fichier illisible")?;
         let handle = {
-            let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+            let _lock = PDFIUM_GUARD.lock();
             self.pdfium.bindings().FPDF_LoadDocument(path_text, document_password(path))
         };
         if handle.is_null() {
@@ -371,7 +383,7 @@ impl PdfEngine {
         }
         let document = RawDocument { engine: self, handle, render };
         let result = work(&document);
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         self.pdfium.bindings().FPDF_CloseDocument(handle);
         result
     }
@@ -440,7 +452,7 @@ impl RawDocument<'_> {
         area_h: i32,
         flags: i32,
     ) -> std::result::Result<(), String> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let bindings = self.engine.pdfium.bindings();
         let page = bindings.FPDF_LoadPage(self.handle, page_index as i32);
         if page.is_null() {
@@ -475,7 +487,7 @@ fn open_error_message(path: &Path, error: &PdfiumError) -> String {
             crate::trf!("« {name} » n'est pas un PDF valide, ou il est endommagé.", "“{name}” is not a valid PDF, or it is damaged.")
         }
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::SecurityError) => {
-            crate::trf!("« {name} » est protégé d'une façon que Kite PDF ne sait pas ouvrir.", "“{name}” is protected in a way Kite PDF cannot open.")
+            crate::trf!("« {name} » est protégé d'une façon qu'Aerolis ne sait pas ouvrir.", "“{name}” is protected in a way Aerolis cannot open.")
         }
         _ => crate::trf!("Impossible d'ouvrir « {name} ».", "Cannot open “{name}”."),
     }
@@ -673,7 +685,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Effectue le rendu matriciel haute qualité d'une page donnée à la taille cible en pixels.
     pub fn render_page(&self, page_index: usize, target_width_px: i32, target_height_px: i32) -> Result<ColorImage> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let mut page = self
             .doc
             .pages()
@@ -710,7 +722,7 @@ impl<'a> LoadedPdfDocument<'a> {
         scale: f32,
         region: TileRegion,
     ) -> Result<ColorImage> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let mut page = self
             .doc
             .pages()
@@ -758,7 +770,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Champs de formulaire de la page que l'application sait remplir.
     pub fn page_form_widgets(&self, page_index: usize) -> Vec<FormWidget> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let Ok(page) = self.doc.pages().get(page_index as u16) else {
             return Vec::new();
         };
@@ -824,7 +836,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Sommaire du document, à plat, dans l'ordre de lecture.
     pub fn outline(&self) -> Vec<OutlineEntry> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let bookmarks = self.doc.bookmarks();
         let mut entries = Vec::new();
         // Parcours en profondeur : (signet, profondeur), le premier enfant avant le suivant.
@@ -886,7 +898,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Charge une page pour en lire la rotation, la zone visible, les annotations et les champs.
     pub fn page_details(&self, page_index: usize) -> Option<PageDetails> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let page = self.doc.pages().get(page_index as u16).ok()?;
         Some(page_details(&page, self.declares_form || self.doc.form().is_some()))
     }
@@ -894,7 +906,7 @@ impl<'a> LoadedPdfDocument<'a> {
     /// Texte brut d'une page, sans positions (assistant IA) : un seul appel à PDFium, bien plus rapide
     /// que [`Self::extract_single_page_text_layer`].
     pub fn extract_page_plain_text(&self, page_idx: usize) -> String {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         self.doc
             .pages()
             .get(page_idx as u16)
@@ -905,7 +917,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Extrait la couche de texte natif d'une seule page à la volée (< 1 ms, idéal pour les très gros PDF).
     pub fn extract_single_page_text_layer(&self, page_idx: usize) -> PageTextLayer {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let pages = self.doc.pages();
         let mut positioned_chars = Vec::new();
         if let Ok(page) = pages.get(page_idx as u16) {
@@ -982,7 +994,7 @@ impl<'a> LoadedPdfDocument<'a> {
     /// Liste les images embarquées d'une page (formulaires inclus) : rectangle en points PDF top-down et taille en pixels.
     #[allow(dead_code)]
     pub fn list_page_image_regions(&self, page_idx: usize) -> Vec<(PdfTopDownRect, usize, usize)> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let mut regions = Vec::new();
         let Ok(page) = self.doc.pages().get(page_idx as u16) else {
             return regions;
@@ -1006,7 +1018,7 @@ impl<'a> LoadedPdfDocument<'a> {
 
     /// Extrait les pixels d'origine de chaque image embarquée (formulaires inclus), sans ré-échantillonnage.
     pub fn extract_page_embedded_images(&self, page_idx: usize) -> Vec<(PdfTopDownRect, RgbImage)> {
-        let _lock = PDFIUM_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = PDFIUM_GUARD.lock();
         let mut results = Vec::new();
         let Ok(page) = self.doc.pages().get(page_idx as u16) else {
             return results;
@@ -1322,11 +1334,11 @@ mod tests {
 
     #[test]
     fn test_open_error_messages_are_plain() {
-        let missing = Path::new("test_pdfs/introuvable_kite.pdf");
+        let missing = Path::new("test_pdfs/introuvable_aerolis.pdf");
         let format = PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FormatError);
         assert_eq!(
             open_error_message(missing, &format),
-            "« introuvable_kite.pdf » est introuvable : il a peut-être été déplacé ou supprimé."
+            "« introuvable_aerolis.pdf » est introuvable : il a peut-être été déplacé ou supprimé."
         );
         let existing = Path::new("Cargo.toml");
         assert_eq!(open_error_message(existing, &format), "« Cargo.toml » n'est pas un PDF valide, ou il est endommagé.");

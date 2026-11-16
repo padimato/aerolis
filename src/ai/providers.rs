@@ -191,7 +191,7 @@ pub fn pitch(provider: AiProvider) -> &'static str {
 }
 
 /// Page des retours sur GitHub (fournisseurs non testés).
-pub const FEEDBACK_URL: &str = "https://github.com/padimato/kite-pdf/issues";
+pub const FEEDBACK_URL: &str = "https://github.com/padimato/aerolis/issues";
 
 /// Estimation du nombre de jetons d'un texte (environ 3,5 caractères par jeton en français et en anglais).
 pub fn estimate_tokens(chars: usize) -> usize {

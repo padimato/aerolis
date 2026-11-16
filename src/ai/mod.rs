@@ -3,7 +3,7 @@
 //! - [`keystore`] : clé API dans le Gestionnaire d'identification de Windows (chiffrée pour le compte).
 //! - [`sources`] : texte des documents choisis comme sources (et images des pages scannées).
 //! - [`net`] : requêtes en continu (streaming) vers Claude, OpenAI ou un service compatible.
-//! - [`history`] : conversations enregistrées dans `%APPDATA%\KitePDF\conversations`.
+//! - [`history`] : conversations enregistrées dans `%APPDATA%\Aerolis\conversations`.
 //! - [`markdown`] : affichage des réponses (titres, listes, gras, renvois « p. 12 » cliquables).
 //! - [`panel`] : bouton rond flottant et fenêtre de discussion.
 
@@ -92,7 +92,7 @@ pub fn system_prompt(english: bool, document_count: usize) -> String {
         "Always reply in the language of the user's latest message, whatever the language of the documents. If that is unclear, reply in French."
     };
     format!(
-        "You are the assistant built into Kite PDF, a PDF reader for Windows. The user asks questions about the \
+        "You are the assistant built into Aerolis, a PDF reader for Windows. The user asks questions about the \
 documents they have open; their text is given between <document> tags, page by page (<page number=\"N\">). \
 Pages with no extractable text may be given as images instead.\n\n\
 Base your answers on these documents. When a sentence uses information from a document, put the page reference \

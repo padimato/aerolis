@@ -23,17 +23,17 @@ mod updates;
 mod viewport;
 mod worker;
 
-use app::{AutomationConfig, InitialSidebarMode, KiteApp};
+use app::{AutomationConfig, InitialSidebarMode, AerolisApp};
 use std::path::PathBuf;
 use tabs::ActiveTool;
 use text_search::PdfTopDownRect;
 
 /// Variable d'environnement qui active les options de test (`--screenshot`, `--page`...) dans une
 /// compilation optimisée. Une compilation de développement les accepte toujours.
-const QA_ENV: &str = "KITE_QA";
+const QA_ENV: &str = "AEROLIS_QA";
 
 /// Nom de l'application (barre de titre, messages).
-pub const APP_NAME: &str = "Kite PDF";
+pub const APP_NAME: &str = "Aerolis";
 
 fn parse_args() -> AutomationConfig {
     let mut cfg = AutomationConfig::default();
@@ -313,13 +313,13 @@ fn parse_args() -> AutomationConfig {
     cfg
 }
 
-/// Écrit toute panique dans `kite_pdf_crash.log` (dossier temporaire) : une fenêtre qui disparaît laisse ainsi une trace.
+/// Écrit toute panique dans `aerolis_crash.log` (dossier temporaire) : une fenêtre qui disparaît laisse ainsi une trace.
 fn install_crash_log() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let backtrace = std::backtrace::Backtrace::force_capture();
         let report = format!("{info}\n{backtrace}\n");
-        let log_path = std::env::temp_dir().join("kite_pdf_crash.log");
+        let log_path = std::env::temp_dir().join("aerolis_crash.log");
         let _ = std::fs::write(log_path, report);
         default_hook(info);
     }));
@@ -328,7 +328,7 @@ fn install_crash_log() {
 /// Écran d'installation tant que PDFium manque, puis l'application elle-même.
 enum Root {
     Setup { screen: setup::SetupScreen, cfg: Option<AutomationConfig> },
-    Ready(Box<KiteApp>),
+    Ready(Box<AerolisApp>),
 }
 
 impl eframe::App for Root {
@@ -338,7 +338,7 @@ impl eframe::App for Root {
                 screen.show(ctx);
                 if screen.ready() {
                     let cfg = cfg.take().unwrap_or_default();
-                    *self = Root::Ready(Box::new(KiteApp::new(ctx, cfg)));
+                    *self = Root::Ready(Box::new(AerolisApp::new(ctx, cfg)));
                     ctx.request_repaint();
                 }
             }
@@ -372,7 +372,7 @@ fn attach_parent_console() {
 
 /// Icône de la barre de titre et de la barre des tâches.
 fn window_icon() -> Option<egui::IconData> {
-    let image = image::load_from_memory(include_bytes!("../assets/icon/kite-256.png")).ok()?.into_rgba8();
+    let image = image::load_from_memory(include_bytes!("../assets/icon/aerolis-256.png")).ok()?.into_rgba8();
     let (width, height) = image.dimensions();
     Some(egui::IconData { rgba: image.into_raw(), width, height })
 }
@@ -398,7 +398,7 @@ fn main() -> eframe::Result<()> {
 
     if let Some(pos) = args.iter().position(|a| a == "--bench") {
         let Some(pdf) = args.get(pos + 1) else {
-            eprintln!("Usage : kite-pdf --bench <fichier.pdf>");
+            eprintln!("Usage : aerolis --bench <fichier.pdf>");
             std::process::exit(2);
         };
         std::process::exit(bench::run(std::path::Path::new(pdf)));
@@ -433,7 +433,7 @@ fn main() -> eframe::Result<()> {
 
     if let Some(pos) = args.iter().position(|a| a == "--ai-list-models") {
         let Some(provider) = args.get(pos + 1).and_then(|p| settings::AiProvider::from_key(p)) else {
-            eprintln!("Usage : kite-pdf --ai-list-models gemini|groq|mistral|openrouter|nvidia|cerebras|anthropic|openai");
+            eprintln!("Usage : aerolis --ai-list-models gemini|groq|mistral|openrouter|nvidia|cerebras|anthropic|openai");
             std::process::exit(2);
         };
         let key = ai::keystore::load(provider);
@@ -506,7 +506,7 @@ fn main() -> eframe::Result<()> {
                 .and_then(|d| deps::locate(&d))
                 .is_some();
             let root = if pdfium_installed {
-                Root::Ready(Box::new(KiteApp::new(&cc.egui_ctx, cfg)))
+                Root::Ready(Box::new(AerolisApp::new(&cc.egui_ctx, cfg)))
             } else {
                 Root::Setup { screen: setup::SetupScreen::new(&cc.egui_ctx), cfg: Some(cfg) }
             };

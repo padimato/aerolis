@@ -72,7 +72,7 @@ fn pipe_name() -> String {
         .collect();
     // Une compilation de développement ne se mélange pas avec la version installée.
     let flavour = if cfg!(debug_assertions) { "-dev" } else { "" };
-    format!(r"\\.\pipe\KitePDF-{user}{flavour}")
+    format!(r"\\.\pipe\Aerolis-{user}{flavour}")
 }
 
 /// Devient la fenêtre principale, ou confie `paths` à celle qui existe déjà.
@@ -99,7 +99,7 @@ fn acquire_on(pipe_path: &str, paths: &[PathBuf]) -> Role {
     if pipe != INVALID_HANDLE_VALUE {
         let pipe = pipe as usize;
         let _ = std::thread::Builder::new()
-            .name("kite-single-instance".into())
+            .name("aerolis-single-instance".into())
             .spawn(move || listen(pipe as Handle));
         return Role::Primary;
     }
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_second_instance_forwards_paths() {
-        let pipe = format!(r"\\.\pipe\KitePDF-test-{}", std::process::id());
+        let pipe = format!(r"\\.\pipe\Aerolis-test-{}", std::process::id());
         assert!(matches!(acquire_on(&pipe, &[]), Role::Primary));
         let file = PathBuf::from(r"C:\docs\rapport final.pdf");
         assert!(matches!(acquire_on(&pipe, &[file.clone()]), Role::Forwarded));

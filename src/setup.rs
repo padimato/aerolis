@@ -38,7 +38,7 @@ impl InstallJob {
             .collect();
         let worker = job.clone();
         std::thread::Builder::new()
-            .name("kite-deps".into())
+            .name("aerolis-deps".into())
             .spawn(move || worker.run(ctx))
             .expect("thread de téléchargement");
         job
@@ -127,9 +127,9 @@ impl SetupScreen {
                             ui.label(RichText::new(crate::i18n::tr("Installation des composants", "Installing components")).size(18.0).color(Color32::WHITE));
                             ui.label(
                                 RichText::new(
-                                    crate::i18n::tr("Kite PDF télécharge ses composants une seule fois, depuis leur \
+                                    crate::i18n::tr("Aerolis télécharge ses composants une seule fois, depuis leur \
                                      source officielle : le moteur qui affiche les PDF et celui qui \
-                                     lit le texte des images.", "Kite PDF downloads its components only once, from their official source: the engine that displays PDFs and the one that reads text in images."),
+                                     lit le texte des images.", "Aerolis downloads its components only once, from their official source: the engine that displays PDFs and the one that reads text in images."),
                                 )
                                 .size(12.0)
                                 .color(muted),
@@ -239,7 +239,7 @@ pub fn check_versions_in_background(ctx: Context) -> Arc<Mutex<Option<Vec<Untest
     let result = Arc::new(Mutex::new(None));
     let slot = result.clone();
     let _ = std::thread::Builder::new()
-        .name("kite-deps-check".into())
+        .name("aerolis-deps-check".into())
         .spawn(move || {
             let ignored = ignored_versions();
             let untested: Vec<UntestedVersion> = deps::untested_versions()

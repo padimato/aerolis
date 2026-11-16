@@ -185,7 +185,7 @@ impl BackgroundWorkers {
             let tx = tx.clone();
             let ctx = ctx.clone();
             std::thread::Builder::new()
-                .name("kite-render".into())
+                .name("aerolis-render".into())
                 .spawn(move || render_thread(engine, queue, tx, ctx))
                 .expect("Impossible de démarrer le thread de rendu");
         }
@@ -194,7 +194,7 @@ impl BackgroundWorkers {
             let tx = tx.clone();
             let ctx = ctx.clone();
             std::thread::Builder::new()
-                .name("kite-ocr".into())
+                .name("aerolis-ocr".into())
                 .spawn(move || ocr_thread(engine, slot, tx, ctx))
                 .expect("Impossible de démarrer le thread OCR");
         }
@@ -217,7 +217,7 @@ impl BackgroundWorkers {
             (self.engine, self.sender.clone(), self.ctx.clone(), self.closed_tabs.clone());
         let render_queue = self.render_queue.clone();
         let _ = std::thread::Builder::new()
-            .name("kite-page-details".into())
+            .name("aerolis-page-details".into())
             .spawn(move || {
                 let Ok(doc) = engine.open_lightweight(&path) else {
                     return;
@@ -287,7 +287,7 @@ impl BackgroundWorkers {
             p.lock().unwrap_or_else(|e| e.into_inner()).clone()
         };
         let _ = std::thread::Builder::new()
-            .name("kite-deep-ocr".into())
+            .name("aerolis-deep-ocr".into())
             .spawn(move || {
                 let finish = |error: Option<String>| {
                     let mut p = shared.lock().unwrap_or_else(|e| e.into_inner());
@@ -355,7 +355,7 @@ impl BackgroundWorkers {
     /// Lit le sommaire et la position de ses titres en tâche de fond.
     pub fn load_outline(&self, tab_id: u64, path: PathBuf) {
         let (engine, tx, ctx) = (self.engine, self.sender.clone(), self.ctx.clone());
-        let _ = std::thread::Builder::new().name("kite-outline".into()).spawn(move || {
+        let _ = std::thread::Builder::new().name("aerolis-outline".into()).spawn(move || {
             let Ok(doc) = engine.load_document(&path) else { return };
             let entries = doc.outline_with_positions();
             {
@@ -371,7 +371,7 @@ impl BackgroundWorkers {
     pub fn load_annotations(&self, tab_id: u64, path: PathBuf, dims: Vec<PageDimensions>) {
         let (tx, ctx) = (self.sender.clone(), self.ctx.clone());
         let _ = std::thread::Builder::new()
-            .name("kite-annotations".into())
+            .name("aerolis-annotations".into())
             .spawn(move || {
                 if let Ok(items) = load_annotations_from_pdf(&path, &dims) {
                     let _ = tx.send(WorkerEvent::AnnotationsLoaded { tab_id, items });

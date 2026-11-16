@@ -1,4 +1,4 @@
-"""Icône de Kite PDF : cerf-volant incliné sur un carré arrondi encre, un pan en couleur d'accent.
+"""Icône d'Aerolis : cerf-volant incliné sur un carré arrondi encre, un pan en couleur d'accent.
 Dessinée en vectoriel puis réduite (suréchantillonnage x8) pour chaque taille du .ico ; sous 40 px,
 la queue disparaît et le cerf-volant grossit pour rester lisible."""
 import math, sys
@@ -89,11 +89,11 @@ def preview(out):
 if __name__ == "__main__":
     # python assets/icon/generate_icon.py assets/icon [--preview]   (nécessite Pillow)
     out = sys.argv[1] if len(sys.argv) > 1 else "."
-    draw(256).save(out + "/kite-256.png")
+    draw(256).save(out + "/aerolis-256.png")
     # Marque seule (sans fond ni queue) : en-tête de la barre latérale, déjà sur fond sombre.
-    draw(64, background=False, tail=False).save(out + "/kite-mark-64.png")
+    draw(64, background=False, tail=False).save(out + "/aerolis-mark-64.png")
     frames = [draw(s) for s in SIZES]
-    frames[-1].save(out + "/kite.ico", sizes=[(s, s) for s in SIZES], append_images=frames[:-1])
+    frames[-1].save(out + "/aerolis.ico", sizes=[(s, s) for s in SIZES], append_images=frames[:-1])
     if "--preview" in sys.argv:
         preview(out)
     print("ok")

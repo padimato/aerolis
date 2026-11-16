@@ -444,7 +444,7 @@ pub enum AiDemo {
     Capture,
 }
 
-pub struct KiteApp {
+pub struct AerolisApp {
     /// Moteur PDFium singleton
     engine: &'static PdfEngine,
     /// Liste des onglets PDF ouverts dans la barre verticale (avec support d'hibernation)
@@ -590,7 +590,7 @@ const TAB_BADGE_COLORS: [(Color32, (f32, f32, f32)); 6] = [
     (Color32::from_rgb(80, 185, 225), (0.10, 0.36, 0.46)),
 ];
 
-impl KiteApp {
+impl AerolisApp {
     pub fn new(egui_ctx: &Context, automation: AutomationConfig) -> Self {
         let engine = PdfEngine::instance();
 
@@ -1255,7 +1255,7 @@ impl KiteApp {
         // Tab / Maj+Tab : champ texte suivant / précédent (le champ garde le focus, egui ne le
         // donne pas aux boutons de la barre latérale).
         let mut move_to: Option<i32> = None;
-        egui::Area::new(egui::Id::new("kite_form_editor"))
+        egui::Area::new(egui::Id::new("aerolis_form_editor"))
             .fixed_pos(rect.min)
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -1365,7 +1365,7 @@ impl KiteApp {
         let Some(dims) = tab.page_dimensions.get(popup.page).copied() else { return };
         let rect = popup.rect.to_screen_rect(*page_rect, dims);
         let mut chosen = None;
-        let area = egui::Area::new(egui::Id::new("kite_form_choice"))
+        let area = egui::Area::new(egui::Id::new("aerolis_form_choice"))
             .fixed_pos(Pos2::new(rect.left(), rect.bottom() + 2.0))
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -1418,7 +1418,7 @@ impl KiteApp {
         let mut source = tab.path.clone();
         let mut cleanup = None;
         if tab.is_modified {
-            let temp = std::env::temp_dir().join(format!("kite-impression-{}.pdf", tab.id));
+            let temp = std::env::temp_dir().join(format!("aerolis-impression-{}.pdf", tab.id));
             tab.ensure_details_for_saved_pages(self.engine);
             let saved = save_pdf_with_ocr_state(
                 &tab.path,
@@ -1468,7 +1468,7 @@ impl KiteApp {
         };
         let mut close = false;
         let width = (canvas_rect.width() - 48.0).min(480.0);
-        egui::Area::new(egui::Id::new("kite_print_status"))
+        egui::Area::new(egui::Id::new("aerolis_print_status"))
             .fixed_pos(Pos2::new(canvas_rect.center().x - width * 0.5, canvas_rect.max.y - 90.0))
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -1513,7 +1513,7 @@ impl KiteApp {
         ctx.layer_painter(egui::LayerId::new(Order::Foreground, egui::Id::new("password_backdrop")))
             .rect_filled(screen, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(6, 8, 12, 150));
         let width = 400.0_f32.min(screen.width() - 32.0);
-        egui::Area::new(egui::Id::new("kite_password_prompt"))
+        egui::Area::new(egui::Id::new("aerolis_password_prompt"))
             .fixed_pos(Pos2::new(screen.center().x - width * 0.5, screen.min.y + screen.height() * 0.25))
             .order(Order::Tooltip)
             .show(ctx, |ui| {
@@ -1651,7 +1651,7 @@ impl KiteApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     }
 
-    /// « document.pdf — Kite PDF » : le document actif se retrouve dans la barre des tâches et Alt+Tab.
+    /// « document.pdf — Aerolis » : le document actif se retrouve dans la barre des tâches et Alt+Tab.
     fn update_window_title(&mut self, ctx: &Context) {
         let title = match self.tabs.get(self.active_tab) {
             Some(tab) => format!("{} — {}", tab.title, crate::APP_NAME),
@@ -1672,7 +1672,7 @@ impl KiteApp {
         });
         if hovering {
             let screen = ctx.screen_rect();
-            let painter = ctx.layer_painter(egui::LayerId::new(Order::Foreground, egui::Id::new("kite_drop")));
+            let painter = ctx.layer_painter(egui::LayerId::new(Order::Foreground, egui::Id::new("aerolis_drop")));
             painter.rect_filled(screen, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(20, 40, 80, 170));
             painter.rect_stroke(
                 screen.shrink(12.0),
@@ -2905,9 +2905,9 @@ impl KiteApp {
     }
 }
 
-impl eframe::App for KiteApp {
+impl eframe::App for AerolisApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Le proxy de confidentialité s'arrête avec Kite (l'objet tâche de Windows le ferait aussi).
+        // Le proxy de confidentialité s'arrête avec Aerolis (l'objet tâche de Windows le ferait aussi).
         crate::ai::privacy::shutdown();
     }
 
@@ -2963,7 +2963,7 @@ impl eframe::App for KiteApp {
         if self.top_layout {
             // Écran portrait : une barre d'une ligne en haut, le tiroir (sommaire, résultats) en bas.
             // Toujours affichée : Ctrl+B ne concerne que la barre latérale du mode paysage.
-            egui::TopBottomPanel::top("kite_top_bar")
+            egui::TopBottomPanel::top("aerolis_top_bar")
                 .exact_height(TOP_BAR_HEIGHT)
                 .resizable(false)
                 .frame(
@@ -2977,7 +2977,7 @@ impl eframe::App for KiteApp {
         } else if self.sidebar.pinned {
             // Largeur fixe : la poignée d'egui est recouverte par la zone du document, qui capte le
             // glissé ; une poignée propre, au premier plan, la remplace (voir `render_sidebar_resize_handle`).
-            egui::SidePanel::left("kite_sidebar_pinned")
+            egui::SidePanel::left("aerolis_sidebar_pinned")
                 .exact_width(self.sidebar.width)
                 .resizable(false)
                 .frame(
@@ -3661,14 +3661,14 @@ impl eframe::App for KiteApp {
     }
 }
 
-impl KiteApp {
+impl AerolisApp {
     /// Intègre les résultats des threads d'arrière-plan (textures, texte, OCR).
     fn process_worker_events(&mut self, ctx: &Context) {
         while let Some(event) = self.workers.try_next_event() {
             match event {
                 WorkerEvent::Rendered { key, image } => {
-                    // `KITE_TIMING=1` : temps entre le lancement et la première image de page.
-                    if !self.first_render_reported && std::env::var_os("KITE_TIMING").is_some() {
+                    // `AEROLIS_TIMING=1` : temps entre le lancement et la première image de page.
+                    if !self.first_render_reported && std::env::var_os("AEROLIS_TIMING").is_some() {
                         self.first_render_reported = true;
                         println!(
                             "Première page affichée {:.0} ms après le lancement",
@@ -4205,7 +4205,7 @@ impl KiteApp {
         if ctx.input(|i| i.pointer.any_released()) {
             self.freetext_awaiting_opening_release = false;
         }
-        egui::Area::new(egui::Id::new("kite_freetext_editor").with(editing_id))
+        egui::Area::new(egui::Id::new("aerolis_freetext_editor").with(editing_id))
             .fixed_pos(screen_rect.min)
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -4335,7 +4335,7 @@ impl KiteApp {
         let mut open_menu_at = None;
         let mut header_buttons_left = f32::INFINITY;
 
-        let area = egui::Area::new(egui::Id::new("kite_comment_panel").with(note_id))
+        let area = egui::Area::new(egui::Id::new("aerolis_comment_panel").with(note_id))
             .fixed_pos(panel_pos)
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -4672,7 +4672,7 @@ impl KiteApp {
             .as_ref()
             .map_or("None", |r| r.state.as_str());
 
-        let area = egui::Area::new(egui::Id::new("kite_line_context_menu"))
+        let area = egui::Area::new(egui::Id::new("aerolis_line_context_menu"))
             .fixed_pos(position)
             .order(Order::Tooltip)
             .show(ctx, |ui| {
@@ -4841,7 +4841,7 @@ impl KiteApp {
             (lacking > 0 && lacking * 5 >= analysed.max(1)).then_some(SearchOcrHint::PagesWithoutText(lacking))
         });
 
-        egui::Area::new(egui::Id::new("kite_floating_ctrl_f"))
+        egui::Area::new(egui::Id::new("aerolis_floating_ctrl_f"))
             .fixed_pos(bar_pos)
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -5003,8 +5003,7 @@ impl KiteApp {
                         ui.add(egui::Image::new(logo).fit_to_exact_size(Vec2::splat(22.0)));
                     }
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(egui::RichText::new("Kite").strong().size(15.0).color(Color32::from_rgb(245, 247, 250)));
-                    ui.label(egui::RichText::new("PDF").size(15.0).color(Color32::from_rgb(140, 150, 170)));
+                    ui.label(egui::RichText::new("Aerolis").strong().size(15.0).color(Color32::from_rgb(245, 247, 250)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let pin_label = if self.sidebar.pinned {
                             crate::i18n::tr("📌 Épinglée", "📌 Pinned")
@@ -5092,7 +5091,7 @@ impl KiteApp {
                 let columns = if self.sidebar.width >= SIDEBAR_ONE_ROW_TOOLS_WIDTH { 8 } else { 4 };
                 let spacing = 5.0;
                 let tool_width = ((ui.available_width() - spacing * (columns - 1) as f32) / columns as f32).max(40.0);
-                egui::Grid::new("kite_tools_grid")
+                egui::Grid::new("aerolis_tools_grid")
                     .num_columns(columns)
                     .spacing([spacing, 4.0])
                     .show(ui, |ui| {
@@ -5722,7 +5721,7 @@ impl KiteApp {
             }
 
             // Onglets : le document affiché et le nombre d'onglets ; la liste s'ouvre au clic.
-            let popup_id = ui.make_persistent_id("kite_tabs_popup");
+            let popup_id = ui.make_persistent_id("aerolis_tabs_popup");
             let popup_open = ui.memory(|m| m.is_popup_open(popup_id));
             let (rect, response) = ui.allocate_exact_size(Vec2::new(tabs_width, 30.0), Sense::click());
             let response = response.on_hover_text(crate::i18n::tr("Onglets ouverts (Ctrl+Tab : onglet suivant)", "Open tabs (Ctrl+Tab: next tab)"));
@@ -5863,7 +5862,7 @@ impl KiteApp {
                 }
             } else {
                 let (icon, _, _) = self.active_tool.icon_and_label();
-                let tools_popup = ui.make_persistent_id("kite_tools_popup");
+                let tools_popup = ui.make_persistent_id("aerolis_tools_popup");
                 let response = ui
                     .add(icon_button(&format!("{icon} ⏷"), true).min_size(Vec2::new(52.0, button.y)))
                     .on_hover_text(crate::i18n::tr("Outil", "Tool"));
@@ -6078,7 +6077,7 @@ impl KiteApp {
         self.sidebar.drawer_height = self.sidebar.drawer_height.clamp(80.0, max_height);
         let drawer_height = self.sidebar.drawer_height;
         let mut outcome = (None, None);
-        egui::TopBottomPanel::bottom("kite_bottom_drawer")
+        egui::TopBottomPanel::bottom("aerolis_bottom_drawer")
             .resizable(false)
             .frame(
                 egui::Frame::NONE
@@ -6146,7 +6145,7 @@ impl KiteApp {
             Pos2::new(edge - SIDEBAR_HANDLE_PX * 0.5, screen.top()),
             Pos2::new(edge + SIDEBAR_HANDLE_PX * 0.5, screen.bottom()),
         );
-        egui::Area::new(egui::Id::new("kite_sidebar_resize"))
+        egui::Area::new(egui::Id::new("aerolis_sidebar_resize"))
             .fixed_pos(grab.min)
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -6170,7 +6169,7 @@ impl KiteApp {
     fn render_autohide_sidebar_overlay(&mut self, ctx: &Context, canvas_rect: Rect) {
         let painter = ctx.layer_painter(egui::LayerId::new(
             Order::Foreground,
-            egui::Id::new("kite_edge_indicator"),
+            egui::Id::new("aerolis_edge_indicator"),
         ));
 
         let edge_strip = Rect::from_min_size(canvas_rect.min, Vec2::new(4.0, canvas_rect.height()));
@@ -6190,7 +6189,7 @@ impl KiteApp {
             Vec2::new(self.sidebar.width, canvas_rect.height() - 16.0),
         );
 
-        egui::Area::new(egui::Id::new("kite_floating_sidebar_overlay"))
+        egui::Area::new(egui::Id::new("aerolis_floating_sidebar_overlay"))
             .fixed_pos(overlay_rect.min)
             // Sans cela egui ramène la zone dans l'écran et la fait apparaître en fondu : la barre
             // surgissait en place au lieu de glisser depuis le bord.
@@ -6311,7 +6310,7 @@ impl KiteApp {
                     }
                 }
                 Action::OpenProjectPage => {
-                    let _ = std::process::Command::new("explorer").arg("https://github.com/padimato/kite-pdf").spawn();
+                    let _ = std::process::Command::new("explorer").arg("https://github.com/padimato/aerolis").spawn();
                 }
                 Action::ShowShortcuts => {
                     self.settings_open = false;
@@ -6471,7 +6470,7 @@ impl KiteApp {
             return;
         }
         let demo = self.automation.ai_demo == Some(AiDemo::Capture);
-        let area = egui::Area::new(egui::Id::new("kite_ai_capture"))
+        let area = egui::Area::new(egui::Id::new("aerolis_ai_capture"))
             .order(Order::Middle)
             .fixed_pos(canvas_rect.min)
             .show(ctx, |ui| {
@@ -6574,7 +6573,7 @@ impl KiteApp {
         use crate::ai::panel::SelectionAsk;
         use crate::i18n::tr;
         let mut chosen: Option<Option<SelectionAsk>> = None;
-        let area = egui::Area::new(egui::Id::new("kite_selection_menu"))
+        let area = egui::Area::new(egui::Id::new("aerolis_selection_menu"))
             .order(Order::Foreground)
             .fixed_pos(position)
             .constrain(true)
@@ -6697,7 +6696,7 @@ impl KiteApp {
         let Some(release) = crate::updates::available() else {
             return;
         };
-        egui::Area::new(egui::Id::new("kite_update_banner"))
+        egui::Area::new(egui::Id::new("aerolis_update_banner"))
             .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -16.0))
             .constrain_to(canvas_rect)
             .order(Order::Foreground)
@@ -6709,7 +6708,7 @@ impl KiteApp {
                     .inner_margin(Margin::same(12))
                     .show(ui, |ui| {
                         ui.label(
-                            egui::RichText::new(crate::trf!("Kite PDF {} est disponible.", "Kite PDF {} is available.", release.version))
+                            egui::RichText::new(crate::trf!("Aerolis {} est disponible.", "Aerolis {} is available.", release.version))
                                 .size(12.5)
                                 .color(Color32::WHITE),
                         );
@@ -6740,7 +6739,7 @@ impl KiteApp {
             return;
         }
         let width = (canvas_rect.width() - 48.0).min(620.0);
-        egui::Area::new(egui::Id::new("kite_dependency_warning"))
+        egui::Area::new(egui::Id::new("aerolis_dependency_warning"))
             .fixed_pos(Pos2::new(canvas_rect.center().x - width * 0.5, canvas_rect.min.y + 12.0))
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -6864,7 +6863,7 @@ impl KiteApp {
         ctx.layer_painter(egui::LayerId::new(Order::Foreground, egui::Id::new("deep_ocr_backdrop")))
             .rect_filled(screen, CornerRadius::ZERO, Color32::from_rgba_unmultiplied(6, 8, 12, 150));
         let width = 470.0_f32.min(screen.width() - 32.0);
-        egui::Area::new(egui::Id::new("kite_deep_ocr_dialog"))
+        egui::Area::new(egui::Id::new("aerolis_deep_ocr_dialog"))
             .fixed_pos(Pos2::new(screen.center().x - width * 0.5, screen.min.y + screen.height() * 0.2))
             .order(Order::Tooltip)
             .show(ctx, |ui| {
@@ -7039,7 +7038,7 @@ impl KiteApp {
         let mut save = false;
         let mut dismiss = false;
         let width = (canvas_rect.width() - 48.0).min(520.0);
-        egui::Area::new(egui::Id::new("kite_deep_ocr_result"))
+        egui::Area::new(egui::Id::new("aerolis_deep_ocr_result"))
             .fixed_pos(Pos2::new(canvas_rect.center().x - width * 0.5, canvas_rect.max.y - 130.0))
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -7089,7 +7088,7 @@ impl KiteApp {
         let mut read_page = false;
         let mut read = false;
         let mut close = false;
-        egui::Area::new(egui::Id::new("kite_no_text_hint"))
+        egui::Area::new(egui::Id::new("aerolis_no_text_hint"))
             .fixed_pos(position + Vec2::new(12.0, 12.0))
             .order(Order::Foreground)
             .show(ctx, |ui| {
@@ -7201,7 +7200,7 @@ impl KiteApp {
         );
         let muted = Color32::from_rgb(135, 145, 168);
 
-        let area = egui::Area::new(egui::Id::new("kite_command_palette_modal"))
+        let area = egui::Area::new(egui::Id::new("aerolis_command_palette_modal"))
             .fixed_pos(bar_pos)
             .order(Order::Tooltip)
             .show(ctx, |ui| {
@@ -7421,12 +7420,12 @@ fn image_ocr_working(setting: crate::settings::ImageOcr, mode: crate::ocr_engine
 
 /// Cerf-volant du logo, sans fond (la barre latérale est déjà sombre), lissé pour un affichage en petite taille.
 fn load_logo(ctx: &Context) -> Option<egui::TextureHandle> {
-    let image = image::load_from_memory(include_bytes!("../assets/icon/kite-mark-64.png")).ok()?.into_rgba8();
+    let image = image::load_from_memory(include_bytes!("../assets/icon/aerolis-mark-64.png")).ok()?.into_rgba8();
     let size = [image.width() as usize, image.height() as usize];
     let pixels = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
     let options = egui::TextureOptions {
         mipmap_mode: Some(egui::TextureFilter::Linear),
         ..egui::TextureOptions::LINEAR
     };
-    Some(ctx.load_texture("kite_logo", pixels, options))
+    Some(ctx.load_texture("aerolis_logo", pixels, options))
 }

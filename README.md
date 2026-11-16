@@ -1,12 +1,14 @@
-<p align="center"><img src="assets/icon/kite-256.png" width="96" alt=""></p>
+<p align="center"><img src="assets/icon/aerolis-256.png" width="96" alt=""></p>
 
-# Kite PDF
+# Aerolis
 
 Lecteur PDF pour Windows écrit en Rust : rapide, économe en mémoire, avec annotations compatibles Adobe Acrobat et OCR des images intégrées.
 
+> Anciennement **Kite PDF** (versions 1.0 à 1.3.0). La mise à jour reprend automatiquement vos réglages, votre historique, vos conversations et vos clés API.
+
 ## Installation
 
-Téléchargez `KitePDF-Setup-x.y.z.exe` dans les [Releases](https://github.com/padimato/kite-pdf/releases) et lancez-le. L'installation se fait pour votre compte, sans droits administrateur. Elle ajoute Kite PDF au menu Démarrer et à « Ouvrir avec » pour les fichiers PDF ; une case de la dernière page ouvre les Paramètres de Windows pour en faire le lecteur par défaut.
+Téléchargez `Aerolis-Setup-x.y.z.exe` dans les [Releases](https://github.com/padimato/aerolis/releases) et lancez-le. L'installation se fait pour votre compte, sans droits administrateur. Elle ajoute Aerolis au menu Démarrer et à « Ouvrir avec » pour les fichiers PDF ; une case de la dernière page ouvre les Paramètres de Windows pour en faire le lecteur par défaut.
 
 Au premier lancement, l'application télécharge PDFium et l'OCR depuis leur source officielle (voir [Composants](#compilation)). L'exécutable n'est pas signé : Windows SmartScreen peut afficher « Windows a protégé votre ordinateur » ; cliquez sur « Informations complémentaires » puis « Exécuter quand même ».
 
@@ -43,7 +45,7 @@ L'assistant utilise votre propre clé API. Elle est rangée dans le Gestionnaire
 
 **Relais** : si le fournisseur choisi ne répond pas (limite gratuite atteinte, panne, modèle retiré), la question part chez le suivant dont la clé est enregistrée, dans l'ordre Groq, Cerebras, Gemini, NVIDIA, Mistral, OpenRouter, puis les payants. Sous la réponse, l'assistant indique qui a répondu et le temps avant le premier mot. Enregistrer deux ou trois clés gratuites rend l'assistant bien plus fiable.
 
-> **Appel aux retours.** Les fournisseurs marqués « non testé » n'ont pas pu être essayés par l'équipe avec une vraie clé : les requêtes suivent leur documentation et sont vérifiées par des tests automatiques sur un faux serveur, mais rien ne remplace un essai réel. Si vous en utilisez un, dites-nous si ça marche (ou ce qui coince) dans les [Issues](https://github.com/padimato/kite-pdf/issues). Kite PDF est open source : une pull request pour améliorer l'assistant ou ajouter un fournisseur est la bienvenue.
+> **Appel aux retours.** Les fournisseurs marqués « non testé » n'ont pas pu être essayés par l'équipe avec une vraie clé : les requêtes suivent leur documentation et sont vérifiées par des tests automatiques sur un faux serveur, mais rien ne remplace un essai réel. Si vous en utilisez un, dites-nous si ça marche (ou ce qui coince) dans les [Issues](https://github.com/padimato/aerolis/issues). Aerolis est open source : une pull request pour améliorer l'assistant ou ajouter un fournisseur est la bienvenue.
 
 ## Raccourcis
 
@@ -70,8 +72,8 @@ L'assistant utilise votre propre clé API. Elle est rangée dans le Gestionnaire
 Prérequis : Windows 10 ou 11 (x64) et [Rust](https://rustup.rs) stable.
 
 ```bash
-git clone https://github.com/padimato/kite-pdf.git
-cd kite-pdf
+git clone https://github.com/padimato/aerolis.git
+cd aerolis
 cargo build --release
 ```
 
@@ -89,7 +91,7 @@ Cette commande installe dans le dossier courant les fichiers manquants :
 | `assets/models/onnxruntime.dll` | [ONNX Runtime, Microsoft](https://github.com/microsoft/onnxruntime/releases) |
 | `assets/models/*.onnx`, `ppocrv5_latin_dict.txt` | modèles PaddleOCR PP-OCRv5 au format ONNX, [publiés par oar-ocr](https://github.com/GreatV/oar-ocr/releases/tag/v0.3.0) |
 
-Sans cette étape, l'application télécharge elle-même ces fichiers au premier lancement, dans `%LOCALAPPDATA%\KitePDF\deps` : l'écran d'installation attend PDFium, l'OCR peut être installé plus tard. La variable d'environnement `KITE_DEPS_DIR` désigne un autre dossier (installation portable).
+Sans cette étape, l'application télécharge elle-même ces fichiers au premier lancement, dans `%LOCALAPPDATA%\Aerolis\deps` : l'écran d'installation attend PDFium, l'OCR peut être installé plus tard. La variable d'environnement `AEROLIS_DEPS_DIR` désigne un autre dossier (installation portable).
 
 **Autre version** : un fichier différent de la version testée est accepté. L'application affiche alors un avertissement qui indique la version testée et où la télécharger, en cas de problème. Pour adopter une nouvelle version, mettez à jour `deps.toml` puis lancez `cargo test`.
 
@@ -101,7 +103,7 @@ Sans les modèles, l'application fonctionne normalement ; seul l'OCR est désact
 cargo run --release -- chemin/vers/document.pdf
 ```
 
-Sans argument, l'application s'ouvre sur la barre centrale et propose les PDF récents. L'historique est conservé dans `%APPDATA%\KitePDF\recent.tsv`.
+Sans argument, l'application s'ouvre sur la barre centrale et propose les PDF récents. L'historique est conservé dans `%APPDATA%\Aerolis\recent.tsv`.
 
 ## Tests
 
@@ -117,27 +119,27 @@ Les tests créent leurs PDF dans `test_pdfs/` (ignoré par git). Les tests OCR d
 |---|---|
 | `--fetch-deps [dossier]` | Installe PDFium et l'OCR (voir plus haut) |
 | `--bench fichier.pdf` | Mesure le temps de chaque étape : ouverture, rendu, texte, OCR (à lancer en `--release`) |
-| `KITE_TIMING=1` | Affiche le temps entre le lancement et la première page affichée, et la lecture du texte envoyé à l'assistant |
+| `AEROLIS_TIMING=1` | Affiche le temps entre le lancement et la première page affichée, et la lecture du texte envoyé à l'assistant |
 | `--lang fr\|en` | Langue de l'interface pour une capture |
 | `--settings [rubrique]` | Ouvre les Réglages (`general`, `documents`, `ocr`, `assistant`, `privacy`, `updates`, `help`) |
 | `--ai-setup`, `--ai-empty`, `--ai-demo`, `--ai-capture` | Assistant ouvert dans un état de démonstration (aucune requête envoyée) |
 | `--ai-provider gemini\|groq\|…`, `--ai-model id` | Fournisseur et modèle de l'assistant pour un essai |
 | `--ai-list-models fournisseur` | Liste les modèles accessibles avec la clé rangée (la clé n'est pas affichée) |
 | `--ai-attach image.png` | Joint une image à la question de `--ai-ask` |
-| `KITE_AI_DEBUG=1` | Journal des requêtes de l'assistant : adresse, statut, délais, début du flux (jamais la clé) |
-| `KITE_USE_VAULT=1` | Avec `KITE_DATA_DIR`, lit quand même les clés rangées dans le coffre de Windows (essais avec de vraies clés) |
+| `AEROLIS_AI_DEBUG=1` | Journal des requêtes de l'assistant : adresse, statut, délais, début du flux (jamais la clé) |
+| `AEROLIS_USE_VAULT=1` | Avec `AEROLIS_DATA_DIR`, lit quand même les clés rangées dans le coffre de Windows (essais avec de vraies clés) |
 | `--ai-ask "question"` | Pose une question à l'assistant au démarrage (essai de bout en bout, par exemple avec un faux service local) |
 | `--selection-menu` | Ouvre le menu du clic droit sur la sélection (avec `--select-stream`) |
-| `KITE_DEPS_DIR` | Dossier des dépendances (installation portable, essais) |
-| `KITE_DATA_DIR` | Dossier des réglages et de l'historique (installation portable, essais) |
-| `KITE_QA=1` | Active dans une compilation `--release` les options de test (`--screenshot`, `--page`, `--search`…), toujours actives en compilation de développement |
+| `AEROLIS_DEPS_DIR` | Dossier des dépendances (installation portable, essais) |
+| `AEROLIS_DATA_DIR` | Dossier des réglages et de l'historique (installation portable, essais) |
+| `AEROLIS_QA=1` | Active dans une compilation `--release` les options de test (`--screenshot`, `--page`, `--search`…), toujours actives en compilation de développement |
 
 ## Publier une version
 
 1. Mettre à jour `version` dans `Cargo.toml`, puis commiter.
 2. `git tag v1.2.3` puis `git push origin v1.2.3`.
 
-L'action GitHub [`release.yml`](.github/workflows/release.yml) compile, lance les tests, construit l'installateur avec [Inno Setup](https://jrsoftware.org/isinfo.php) (script [`installer/kite-pdf.iss`](installer/kite-pdf.iss)) et le publie dans les Releases. Pour le construire en local : `cargo build --release` puis `iscc installer\kite-pdf.iss` ; le résultat est dans `target\installer\`.
+L'action GitHub [`release.yml`](.github/workflows/release.yml) compile, lance les tests, construit l'installateur avec [Inno Setup](https://jrsoftware.org/isinfo.php) (script [`installer/aerolis.iss`](installer/aerolis.iss)) et le publie dans les Releases. Pour le construire en local : `cargo build --release` puis `iscc installer\aerolis.iss` ; le résultat est dans `target\installer\`.
 
 L'icône est générée par [`assets/icon/generate_icon.py`](assets/icon/generate_icon.py) (Pillow).
 

@@ -15,7 +15,7 @@ const MANIFEST: &str = include_str!("../deps.toml");
 
 /// Variable d'environnement qui remplace le dossier des dépendances de l'utilisateur
 /// (installation portable, tests).
-pub const DEPS_DIR_ENV: &str = "KITE_DEPS_DIR";
+pub const DEPS_DIR_ENV: &str = "AEROLIS_DEPS_DIR";
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Dependency {
@@ -55,8 +55,8 @@ pub struct UntestedVersion {
 impl UntestedVersion {
     pub fn warning(&self) -> String {
         crate::trf!(
-            "{} : la version installée n'est pas celle testée avec Kite PDF ({}). Si quelque \
-             chose ne fonctionne pas, installez la version testée : {} (fichier concerné : {})", "{}: the installed version is not the one tested with Kite PDF ({}). If something does not work, install the tested version: {} (file concerned: {})",
+            "{} : la version installée n'est pas celle testée avec Aerolis ({}). Si quelque \
+             chose ne fonctionne pas, installez la version testée : {} (fichier concerné : {})", "{}: the installed version is not the one tested with Aerolis ({}). If something does not work, install the tested version: {} (file concerned: {})",
             self.dependency.name,
             self.dependency.version,
             self.dependency.url,
@@ -194,7 +194,7 @@ pub fn install(
 pub(crate) fn fetch(url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<()> {
     let agent = ureq::AgentBuilder::new()
         .try_proxy_from_env(true)
-        .user_agent(concat!("kite-pdf/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("aerolis/", env!("CARGO_PKG_VERSION")))
         .build();
     let response = agent.get(url).call().context(crate::i18n::tr("téléchargement impossible", "download failed"))?;
     let total = response
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_extract_member_from_zip_and_hash() {
-        let dir = std::env::temp_dir().join("kite_deps_test");
+        let dir = std::env::temp_dir().join("aerolis_deps_test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let archive = dir.join("a.zip");
